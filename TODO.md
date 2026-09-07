@@ -57,30 +57,30 @@
 * `backend/app/api/agent.py`
 
 ### 📋 Ankit's Checklist
-- [ ] **Repository Setup & Governance:**
-  - [ ] Initialize monorepo structure (`backend/`, `frontend/`, `samples/`).
-  - [ ] Configure Python `uv` package manager and lockfile.
-  - [ ] Verify local Ollama server and pull all 3 models (`llama3.2:1b`, `qwen2.5-coder:1.5b`, `qwen2.5vl:3b`).
-- [ ] **Ollama Client & GPU Hot-Swap (`ollama_client.py`):**
-  - [ ] Build async wrapper around `ollama.AsyncClient`.
-  - [ ] Write startup preloading routine with `keep_alive=-1` to lock all 3 models in GPU memory (~4.1 GB total VRAM).
-- [ ] **Model Auto-Selection Router (`classifier.py` & `router.py`):**
-  - [ ] Implement heuristic keyword + attachment classifier:
-    - [ ] If images or P&ID diagrams attached ➔ `qwen2.5vl:3b`
-    - [ ] If scanned PDF and OCR keywords present ➔ `qwen2.5vl:3b`
-    - [ ] If programming keywords or code blocks present ➔ `qwen2.5-coder:1.5b`
-    - [ ] Default / General chat / Summaries ➔ `llama3.2:1b`
-  - [ ] Support explicit user override flag (`model_override`).
-- [ ] **Autonomous ReAct Agent Loop (`app/agent/`):**
-  - [ ] `planner.py`: Generate structured step plan using local LLM.
-  - [ ] `executor.py`: Dispatch steps to Amit's Tool Registry.
-  - [ ] `observer.py`: Inspect tool outputs and detect errors.
-  - [ ] `loop.py`: Run Plan ➔ Act ➔ Observe ➔ Reflect loop with 10-step limit and error self-correction.
-- [ ] **Sandboxed Code Runner (`code_execute.py`):**
-  - [ ] Secure `asyncio.create_subprocess_exec` runner with 30s timeout, memory limit, and stdout/stderr capture.
-- [ ] **Streaming API Handlers:**
-  - [ ] `POST /api/chat`: SSE token streaming with metadata event.
-  - [ ] `POST /api/agent/execute`: SSE step-by-step progress streaming.
+- [x] **Repository Setup & Governance:**
+  - [x] Initialize monorepo structure (`backend/`, `frontend/`, `samples/`).
+  - [x] Configure Python `uv` package manager and lockfile.
+  - [x] Verify local Ollama server and pull all 3 models (`llama3.2:1b`, `qwen2.5-coder:1.5b`, `qwen2.5vl:3b`).
+- [x] **Ollama Client & GPU Hot-Swap (`ollama_client.py`):**
+  - [x] Build async wrapper around `ollama.AsyncClient`.
+  - [x] Write startup preloading routine with `keep_alive=-1` to lock all 3 models in GPU memory (~4.1 GB total VRAM).
+- [x] **Model Auto-Selection Router (`classifier.py` & `router.py`):**
+  - [x] Implement heuristic keyword + attachment classifier:
+    - [x] If images or P&ID diagrams attached ➔ `qwen2.5vl:3b`
+    - [x] If scanned PDF and OCR keywords present ➔ `qwen2.5vl:3b`
+    - [x] If programming keywords or code blocks present ➔ `qwen2.5-coder:1.5b`
+    - [x] Default / General chat / Summaries ➔ `llama3.2:1b`
+  - [x] Support explicit user override flag (`model_override`).
+- [x] **Autonomous ReAct Agent Loop (`app/agent/`):**
+  - [x] `planner.py`: Generate structured step plan using local LLM.
+  - [x] `executor.py`: Dispatch steps to Amit's Tool Registry.
+  - [x] `observer.py`: Inspect tool outputs and detect errors.
+  - [x] `loop.py`: Run Plan ➔ Act ➔ Observe ➔ Reflect loop with 10-step limit and error self-correction.
+- [x] **Sandboxed Code Runner (`code_execute.py`):**
+  - [x] Secure `asyncio.create_subprocess_exec` runner with 30s timeout, memory limit, and stdout/stderr capture.
+- [x] **Streaming API Handlers:**
+  - [x] `POST /api/chat`: SSE token streaming with metadata event.
+  - [x] `POST /api/agent/execute`: SSE step-by-step progress streaming.
 
 ---
 
