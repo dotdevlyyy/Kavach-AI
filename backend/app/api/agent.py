@@ -10,6 +10,8 @@ from loguru import logger
 
 from app.schemas.agent import AgentExecuteRequest
 from app.agent.loop import agent_loop
+from app.models.agent_task import AgentTask
+from app.models.agent_step import AgentStep
 
 
 router = APIRouter(prefix="/api/agent", tags=["Agent"])
@@ -33,15 +35,46 @@ async def execute_agent_task(request: AgentExecuteRequest):
     )
 
 
+@router.get("/tasks")
+async def list_tasks(limit: int = 20):
+    """GET /api/agent/tasks — List recent agent tasks."""
+    tasks = await AgentTask.all().order_by("-created_at").limit(limit)
+    return {
+        "tasks": [
+            {
+                "id": str(t.id),
+                "description": t.description,
+                "status": t.status,
+                "total_steps": t.total_steps,
+                "created_at": str(t.created_at),
+            }
+            for t in tasks
+        ],
+        "total": await AgentTask.all().count()
+    }
+
+
 @router.get("/tasks/{task_id}")
 async def get_task_details(task_id: str):
-    """
-    GET /api/agent/tasks/{task_id}
-    Retrieves status and step breakdown for a given task ID.
-    """
+    """GET /api/agent/tasks/{task_id} — Retrieves status and step breakdown."""
+    task = await AgentTask.get_or_none(id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    steps = await AgentStep.filter(agent_task=task).order_by("step_number")
     return {
-        "task_id": task_id,
-        "status": "completed",
-        "steps": [],
-        "deliverables": []
+        "task_id": str(task.id),
+        "description": task.description,
+        "status": task.status,
+        "total_steps": task.total_steps,
+        "created_at": str(task.created_at),
+        "steps": [
+            {
+                "step_number": s.step_number,
+                "type": s.type,
+                "content": s.content,
+                "created_at": str(s.created_at),
+            }
+            for s in steps
+        ],
     }

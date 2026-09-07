@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version=settings.APP_VERSION,
+    version=settings.app_version,
     description="Sovereign On-Premises Agentic AI Workbench for MRPL & PSUs",
     lifespan=lifespan
 )
@@ -64,7 +64,7 @@ async def root():
     """Health check root endpoint."""
     return {
         "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
+        "version": settings.app_version,
         "status": "online",
         "air_gapped": True
     }

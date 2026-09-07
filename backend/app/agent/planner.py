@@ -60,7 +60,8 @@ class AgentPlanner:
                 messages=messages,
                 options={"temperature": 0.2}
             ):
-                response_text += chunk
+                token = chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", "")
+                response_text += token
 
             # Parse JSON plan from response
             cleaned_text = response_text.strip()

@@ -1,11 +1,20 @@
 """
 Kavach AI — ReAct Agent Executor
-Dispatches individual step execution requests to appropriate tools.
+Dispatches individual step execution requests to the Tool Registry.
 """
 
 from typing import Dict, Any
 from loguru import logger
+from app.tools.registry import execute_tool, _TOOL_REGISTRY
 from app.tools.code_execute import execute_python_code
+
+# Import tool modules so their @register_tool decorators fire at import time
+import app.tools.file_read       # noqa: F401
+import app.tools.file_write      # noqa: F401
+import app.tools.doc_generate    # noqa: F401
+import app.tools.ocr_extract     # noqa: F401
+import app.tools.image_analyze   # noqa: F401
+import app.rag.knowledge_search  # noqa: F401
 
 
 class AgentExecutor:
@@ -19,10 +28,13 @@ class AgentExecutor:
     ) -> Dict[str, Any]:
         """
         Executes a specified tool with given input arguments.
+        Routes to the Tool Registry for registered tools, with special
+        handling for code_execute (subprocess sandbox).
         """
         logger.info(f"Executing step #{step_number} with tool: {tool_name}")
 
         try:
+            # Special case: code execution uses its own subprocess sandbox
             if tool_name == "code_execute":
                 code = tool_input.get("code", "print('No code provided')")
                 res = await execute_python_code(code=code)
@@ -33,59 +45,21 @@ class AgentExecutor:
                     "raw": res
                 }
 
-            elif tool_name == "knowledge_search":
-                query = tool_input.get("query", "")
+            # Check if tool is in the registry
+            if tool_name in _TOOL_REGISTRY:
+                result = await execute_tool(tool_name, tool_input)
                 return {
-                    "tool": "knowledge_search",
+                    "tool": tool_name,
                     "success": True,
-                    "output": f"Knowledge search completed for query: '{query}'. Context retrieved from refinery SOP database.",
-                    "query": query
+                    "output": str(result)
                 }
 
-            elif tool_name == "doc_generate":
-                doc_type = tool_input.get("doc_type", "approval_note")
-                return {
-                    "tool": "doc_generate",
-                    "success": True,
-                    "output": f"Generated MRPL {doc_type} deliverable successfully.",
-                    "file_path": f"outputs/MRPL_{doc_type.upper()}_2026.docx"
-                }
-
-            elif tool_name == "ocr_extract":
-                image_path = tool_input.get("image_path", "")
-                return {
-                    "tool": "ocr_extract",
-                    "success": True,
-                    "output": f"Extracted text and valve metadata from image/document: {image_path}",
-                    "text": "Extracted text content from P&ID drawing."
-                }
-
-            elif tool_name == "file_read":
-                filepath = tool_input.get("filepath", "")
-                return {
-                    "tool": "file_read",
-                    "success": True,
-                    "output": f"Read file {filepath} successfully.",
-                    "content": "Sample file content..."
-                }
-
-            elif tool_name == "file_write":
-                filepath = tool_input.get("filepath", "")
-                content = tool_input.get("content", "")
-                return {
-                    "tool": "file_write",
-                    "success": True,
-                    "output": f"Wrote content to {filepath} successfully.",
-                    "bytes_written": len(content)
-                }
-
-            else:
-                # Default/Direct reasoning step without external tool call
-                return {
-                    "tool": tool_name or "none",
-                    "success": True,
-                    "output": f"Step #{step_number} reasoning and execution completed."
-                }
+            # Default: reasoning step with no external tool call
+            return {
+                "tool": tool_name or "none",
+                "success": True,
+                "output": f"Step #{step_number} reasoning and execution completed."
+            }
 
         except Exception as e:
             logger.error(f"Error in step #{step_number} tool execution ({tool_name}): {e}")

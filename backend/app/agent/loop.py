@@ -122,16 +122,14 @@ class AgentLoop:
             {"role": "user", "content": task_description}
         ]
 
-        async for token in ollama_client.chat_stream(
+        async for chunk in ollama_client.chat_stream(
             model=selected_model,
             messages=messages,
             options={"temperature": 0.3}
         ):
-            token_event = {
-                "event": "token",
-                "data": json.dumps({"token": token})
-            }
-            yield f"event: {token_event['event']}\ndata: {token_event['data']}\n\n"
+            token_text = chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", "")
+            if token_text:
+                yield f"event: token\ndata: {json.dumps({'token': token_text})}\n\n"
 
         # Done event
         done_event = {
