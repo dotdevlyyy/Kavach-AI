@@ -3,10 +3,10 @@
 > **Project:** Kavach AI (Air-Gapped Agentic AI Workbench for PSUs & Critical Infrastructure)  
 > **Problem Statement ID:** 26117 | **Organization:** Mangalore Refinery and Petrochemicals Limited (MRPL)  
 > **Team Roster:**  
-> - 🌟 **Core Pillars (Heavy Architecture & Critical Engine):** **ANKIT** & **AMIT**  
+> - 🌟 **Heavy Technical Core Pillars:** **ANKIT** & **AMIT**  
 > - 🎨 **Frontend Lead & Chat UX:** **BASUDEV**  
-> - 🧠 **RAG Engine & Local Embeddings:** **PRAGYAN**  
-> - 🚀 **Data & Testing Specialist:** **RAHUL**  
+> - 📊 **Pitch Deck, PPT & Demo Lead (Light Tech):** **PRAGYAN**  
+> - 🚀 **Data & Ingestion Specialist:** **RAHUL**  
 > - 💻 **Security Audit & Workspaces:** **PRITAM**  
 
 ---
@@ -17,21 +17,26 @@
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                              KAVACH AI — 6-MEMBER TEAM MATRIX                                          │
 ├──────────────────────────┬──────────────────────────┬──────────────────────────┬───────────────────────────────────────┤
-│ 🌟 ANKIT (Core Pillar)   │ 🌟 AMIT (Core Pillar)    │ 🎨 BASUDEV (Frontend Lead│ 🚀 SPECIALIZED MODULES                │
-│ Team Lead & Core AI      │ Backend & Deliverables   │ Chat & Agent UX          │                                       │
-│                          │                          │                          │ 🧠 PRAGYAN: Embeddings & RAG Search   │
-│ • Ollama Model Lifecycle │ • Tortoise ORM + SQLite  │ • Next.js 15 + Cult UI   │ 🚀 RAHUL: Document Parsing & Datasets │
-│ • Heuristic Model Router │ • msgspec Serialization  │ • SSE Stream Consumer    │ 💻 PRITAM: Network Audit & Workspaces │
-│ • ReAct Agent Planner    │ • File Upload / Storage  │ • Interactive Chat Page  │                                       │
-│ • Execution & Reflection │ • Tool Registry Base     │ • Agent Step Visualizer  │                                       │
-│ • Sandboxed Code Runner  │ • Word/Excel Deliverables│ • Deliverable Download   │                                       │
-│ • Chat & Agent SSE APIs  │ • OCR & Vision Wrapper   │ • Layout & UI Themes     │                                       │
-└──────────────────────────┴──────────────────────────┴──────────────────────────┴───────────────────────────────────────┘
+│ 🌟 ANKIT (Core Pillar)   │ 🌟 AMIT (Core Pillar)    │ 🎨 BASUDEV (Frontend Lead│ 📊 PRAGYAN (PPT & Pitch Lead)         │
+│ Team Lead & Core AI      │ Backend & Deliverables   │ Chat & Agent UX          │ High-Impact Presentation & Demo Story │
+│                          │                          │                          │                                       │
+│ • Ollama Model Lifecycle │ • Tortoise ORM + SQLite  │ • Next.js 15 + Cult UI   │ • 10-Slide Winning PPT Deck           │
+│ • Heuristic Model Router │ • msgspec Serialization  │ • SSE Stream Consumer    │ • Jury Pitch Script & Storyline       │
+│ • ReAct Agent Planner    │ • File Upload / Storage  │ • Interactive Chat Page  │ • MRPL Problem-Solution Framing       │
+│ • Execution & Reflection │ • Tool Registry Base     │ • Agent Step Visualizer  │ • Competitor Feature Matrix           │
+│ • Sandboxed Code Runner  │ • Word/Excel Deliverables│ • Deliverable Download   │ • Demo Testing & Scenario QA (Light)  │
+│ • Chat & Agent SSE APIs  │ • RAG Engine & Embeddings│ • Layout & UI Themes     │                                       │
+├──────────────────────────┴──────────────────────────┴──────────────────────────┼───────────────────────────────────────┤
+│ 🚀 RAHUL (Data & Ingestion Specialist)                                         │ 💻 PRITAM (Security Audit & Workspaces│
+│ • Document Parsers (PyMuPDF, python-docx, text)                                │ • Air-Gap Network Audit API (psutil)  │
+│ • Text Chunker (512-token sliding window)                                      │ • Next.js Network Monitor Page UI     │
+│ • Demo Refinery Datasets (P&ID, Inspection PDF, SOPs)                          │ • Dashboard & Settings UI Pages       │
+└────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────┘
 ```
 
 ---
 
-# 🌟 PART 1: CORE PILLARS (MISSION-CRITICAL WORK)
+# 🌟 PART 1: CORE PILLARS (MISSION-CRITICAL HEAVY WORK)
 
 ---
 
@@ -79,26 +84,27 @@
 
 ---
 
-## 🧑‍💻 AMIT — Backend Systems, Database & Deliverables Engine
+## 🧑‍💻 AMIT — Backend Systems, Database, Deliverables & RAG Engine
 
-> **Primary Focus:** All mission-critical backend infrastructure: SQLite WAL database, Tortoise ORM models, msgspec serialization, file upload/storage pipeline, tool registry, and concrete deliverable generators (Word, Excel, PowerPoint).
+> **Primary Focus:** All mission-critical backend infrastructure: SQLite WAL database, Tortoise ORM models, msgspec serialization, file upload/storage pipeline, tool registry, concrete deliverable generators (Word, Excel), and the RAG hybrid search pipeline.
 
 ### 📁 Files Owned by Amit
 * `backend/app/core/database.py`
 * `backend/app/core/msgspec_adapter.py`
-* `backend/app/models/*.py` (`conversation.py`, `message.py`, `agent_task.py`, `agent_step.py`, `tool_call.py`, `document.py`, `file_upload.py`)
+* `backend/app/models/*.py` (`conversation.py`, `message.py`, `agent_task.py`, `agent_step.py`, `tool_call.py`, `document.py`, `knowledge_chunk.py`, `file_upload.py`)
 * `backend/app/schemas/*.py` (`chat.py`, `agent.py`, `files.py`, `common.py`)
 * `backend/app/api/files.py`
 * `backend/app/tools/registry.py`
 * `backend/app/tools/file_read.py` & `backend/app/tools/file_write.py`
 * `backend/app/tools/doc_generate.py`
 * `backend/app/tools/ocr_extract.py` & `backend/app/tools/image_analyze.py`
+* `backend/app/rag/embedder.py`, `retriever.py`, `pipeline.py`, `knowledge_search.py`
 
 ### 📋 Amit's Checklist
 - [ ] **Database & ORM Setup (`database.py` & `models/`):**
   - [ ] Configure Tortoise ORM with `aiosqlite` targeting `backend/data/kavach.db`.
   - [ ] Enable SQLite Write-Ahead Logging (`PRAGMA journal_mode=WAL;`).
-  - [ ] Implement all Tortoise models: `Conversation`, `Message`, `AgentTask`, `AgentStep`, `ToolCall`, `Document`, `FileUpload`.
+  - [ ] Implement all Tortoise models: `Conversation`, `Message`, `AgentTask`, `AgentStep`, `ToolCall`, `Document`, `KnowledgeChunk`, `FileUpload`.
 - [ ] **msgspec Performance Layer (`schemas/` & `msgspec_adapter.py`):**
   - [ ] Define strict request/response structs for Chat, Agent, Files, and Models.
   - [ ] Implement custom `MsgspecJSONResponse` for FastAPI for 10-50x faster serialization.
@@ -116,6 +122,9 @@
 - [ ] **OCR & Vision Tools:**
   - [ ] Wrap `qwen2.5vl:3b` in `ocr_extract.py` to extract text from scanned reports.
   - [ ] Implement `image_analyze.py` to detect valves and tags in engineering drawings.
+- [ ] **RAG Engine & Local Retrieval (`rag/`):**
+  - [ ] Connect Rahul's parser & chunker into SQLite FTS5 table + vector embeddings.
+  - [ ] Implement hybrid search (BM25 + Cosine + RRF) and expose `knowledge_search` tool for Ankit's agent.
 
 ---
 
@@ -125,8 +134,7 @@
 
 ## 🎨 BASUDEV — Frontend Lead & Interactive Chat / Agent UX Engineer
 
-> **Primary Focus:** Next.js 15 App Router architecture, Bun runtime, Tailwind CSS, Cult UI / shadcn integration, real-time SSE stream consumer, conversational feed, thought visualizer, and deliverable download cards.  
-> *(Swapped into Frontend Lead role)*
+> **Primary Focus:** Next.js 15 App Router architecture, Bun runtime, Tailwind CSS, Cult UI / shadcn integration, real-time SSE stream consumer, conversational feed, thought visualizer, and deliverable download cards.
 
 ### 📁 Files Owned by Basudev
 * `frontend/app/layout.tsx`
@@ -168,43 +176,49 @@
 
 ---
 
-# 🧠 PART 3: SPECIALIZED BACKEND & SUPPORT MODULES
+# 📊 PART 3: PPT, PITCH DECK & DEMO STORYTELLING LEAD
 
 ---
 
-## 🧠 PRAGYAN — Local Embeddings & SQLite RAG Search Engineer
+## 📊 PRAGYAN — Pitch Deck, PPT & Demo Lead *(Less Technical, High Impact)*
 
-> **Primary Focus:** Vector embeddings generation with Ollama, SQLite FTS5 hybrid search, Reciprocal Rank Fusion (RRF) algorithm, and Knowledge Base APIs.  
-> *(Swapped into RAG & Embeddings role)*
+> **Primary Focus:** The presentation deck is what wins the hackathon! Pragyan creates the master pitch deck, refines the MRPL refinery problem narrative, coordinates the live demo storyline, and performs lightweight testing on sample questions.
 
-### 📁 Files Owned by Pragyan
-* `backend/app/rag/embedder.py`
-* `backend/app/rag/retriever.py`
-* `backend/app/rag/pipeline.py`
-* `backend/app/api/knowledge.py`
-* `backend/app/tools/knowledge_search.py`
+### 📁 Files & Deliverables Owned by Pragyan
+* `presentation/Kavach_AI_MRPL_Pitch_Deck.pptx` (or `.pdf`)
+* `docs/11_PPT_OUTLINE.md` (Review and customize)
+* `docs/12_VIDEO_SCRIPT.md` (Demo recording narrative)
+* `docs/10_DEMO_SCRIPT.md` (Timing & talking points)
+* Testing & QA of sample questions on the UI
 
-### 📋 Pragyan's Checklist
-- [ ] **Ollama Vector Embedder (`embedder.py`):**
-  - [ ] Write `get_embedding(text: str) -> list[float]` calling `ollama.AsyncClient().embed(model="llama3.2:1b", input=text)`.
-  - [ ] Write serialization helper to convert `list[float]` into a binary blob (`bytes`) for SQLite storage.
-- [ ] **SQLite FTS5 & Vector Hybrid Retriever (`retriever.py`):**
-  - [ ] Keyword search: query SQLite FTS5 table `chunks_fts`.
-  - [ ] Vector search: compute cosine similarity between query embedding and stored chunk blobs using NumPy.
-  - [ ] Combine ranks using **Reciprocal Rank Fusion (RRF)**: $Score = \frac{1}{60 + Rank_{FTS}} + \frac{1}{60 + Rank_{Vector}}$.
-  - [ ] Return top 5 most relevant chunks.
-- [ ] **RAG Orchestration Pipeline (`pipeline.py`):**
-  - [ ] Connect ingestion flow: Rahul's parser ➔ Rahul's chunker ➔ embedder ➔ store in DB.
-- [ ] **Knowledge Base API & Search Tool (`knowledge.py` & `knowledge_search.py`):**
-  - [ ] `POST /api/knowledge/index`: accepts file ID, triggers RAG ingestion.
-  - [ ] `POST /api/knowledge/search`: returns matched text chunks with document citations.
-  - [ ] `knowledge_search` tool: wrap retrieval so Ankit's agent can call it during planning.
+### 📋 Pragyan's Checklist (Focused on PPT & Presentation)
+- [ ] **Master 10-Slide Pitch Presentation (`docs/11_PPT_OUTLINE.md`):**
+  - [ ] **Slide 1: Title Card:** Kavach AI (कवच) — Sovereign On-Premises Agentic AI Workbench for MRPL.
+  - [ ] **Slide 2: The Core Dilemma:** Classified refinery data (P&ID drawings, inspection reports, crude financial schemas) cannot traverse public cloud AI.
+  - [ ] **Slide 3: Our Solution:** 100% on-premises GPU workbench with zero outbound network packets.
+  - [ ] **Slide 4: Core Innovation (Multi-Model Hot-Swap):** Why 3 specialized SLMs (1B–3B) beat 1 huge cloud LLM on-prem (~4.1 GB VRAM).
+  - [ ] **Slide 5: ReAct Agent Architecture:** How Kavach acts autonomously (Plan ➔ Act ➔ Observe ➔ Reflect) and self-corrects.
+  - [ ] **Slide 6: Real Deliverables vs Chat Text:** Emphasize real Word approval notes, Excel sheets, and code execution.
+  - [ ] **Slide 7: Multimodal Intelligence:** Processing scanned corrosion inspection reports & engineering diagrams.
+  - [ ] **Slide 8: Air-Gap Verification:** Live socket monitoring proving zero external calls.
+  - [ ] **Slide 9: Competitor Matrix:** Kavach vs Copilot on-prem, Open-WebUI, Ollama bare-metal, Dify (based on `docs/13_COMPETITOR_ANALYSIS.md`).
+  - [ ] **Slide 10: Scalability, Business ROI & Roadmap:** MRPL multi-unit deployment & future roadmap.
+- [ ] **Demo Narrative & Jury Rehearsal:**
+  - [ ] Write exact speaker script for Ankit, Amit, Basudev, and yourself.
+  - [ ] Prepare answers for tough judge questions: *"Why not just use ChatGPT Enterprise?"*, *"How do you handle hallucination?"*, *"What happens without GPU?"*
+- [ ] **Lightweight Quality Testing (QA):**
+  - [ ] Test the 4 demo prompts on Basudev's `/chat` interface.
+  - [ ] Verify generated `.docx` file formatting looks clean and professional.
 
 ---
 
-## 🚀 RAHUL — Document Parsing & Demo Dataset Curation
+# 🚀 PART 4: SUPPORTING MODULES & SPECIALISTS
 
-> **Primary Focus:** Write document text extractors, text chunking, and prepare sample refinery datasets.  
+---
+
+## 🚀 RAHUL — Document Parsing & Demo Datasets
+
+> **Primary Focus:** Text extractors for PDF/Word, text chunker, and curating realistic refinery sample data.  
 > **Mentor / Reviewer:** AMIT
 
 ### 📁 Files Owned by Rahul
@@ -232,9 +246,9 @@
 
 ---
 
-## 💻 PRITAM — Air-Gap Network Audit, Secondary Workspaces & Presentation
+## 💻 PRITAM — Air-Gap Network Audit & Secondary Workspaces
 
-> **Primary Focus:** Network sovereignty verification API, secondary frontend pages, and presentation slides.  
+> **Primary Focus:** Network sovereignty audit API, secondary frontend pages (Network Monitor, Dashboard, Settings), and backup video recording.  
 > **Mentor / Reviewer:** BASUDEV & ANKIT
 
 ### 📁 Files Owned by Pritam
@@ -245,65 +259,46 @@
 * `frontend/app/network/page.tsx` (Air-Gap Monitor UI)
 * `frontend/app/tasks/page.tsx` (Task History)
 * `frontend/app/settings/page.tsx` (Settings)
-* `presentation/` & Demo Video Recording
+* Backup Screen Recording Video (using Pragyan's video script)
 
 ### 📋 Pritam's Checklist
 - [ ] **Air-Gap Sovereignty API (`api/network.py`):**
   - [ ] Use `psutil.net_connections()` to list open TCP/UDP sockets for the app process.
   - [ ] Verify all remote addresses are local (`127.0.0.1`, `0.0.0.0`, or local subnet).
-  - [ ] Flag and count any external IP connections (must always be 0).
   - [ ] Return `{ total_connections, external_connections: 0, is_air_gapped: true, connections: [...] }`.
 - [ ] **System Health Check (`api/health.py`):**
   - [ ] Check SQLite database status and Ollama availability.
 - [ ] **Frontend Secondary Pages (Next.js):**
   - [ ] **Dashboard (`frontend/app/page.tsx`):** System status card, GPU VRAM gauge (~4.1 GB / 100%), and quick launch cards.
   - [ ] **Air-Gap Monitor (`frontend/app/network/page.tsx`):** Table of active local sockets and prominent green **"AIR-GAP STATUS: 100% SECURE / ZERO EXTERNAL CALLS"** badge.
-  - [ ] **Knowledge Base UI (`frontend/app/knowledge/page.tsx`):** Upload SOP file button, list of indexed documents, and test search query drawer.
-  - [ ] **Task History (`frontend/app/tasks/page.tsx`):** Table showing past agent tasks, steps taken, and tokens consumed.
-  - [ ] **Settings (`frontend/app/settings/page.tsx`):** Display loaded models, parameter sizes, and temperature sliders.
-- [ ] **Pitch Presentation & Demo Video:**
-  - [ ] Create 10-slide PowerPoint presentation following `docs/11_PPT_OUTLINE.md`.
-  - [ ] Record a 3-minute screen recording of all 4 demo scenarios as a backup for the judges.
+  - [ ] **Knowledge Base UI (`frontend/app/knowledge/page.tsx`):** Upload SOP file button and document index list.
+  - [ ] **Task History (`frontend/app/tasks/page.tsx`):** Table showing past agent tasks and token usage.
+- [ ] **Demo Backup Video:**
+  - [ ] Record a 3-minute screen recording of all 4 demo scenarios following Pragyan's script as insurance for the jury.
 
 ---
 
-## 🤝 Cross-Developer Handshake Contracts (Zero Confusion)
+## 🤝 Handshake Flow Between Team Members
 
-1. **Ankit ➔ Basudev (Streaming Chat SSE):**
-   ```text
-   event: metadata -> {"conversation_id": "...", "model": "qwen2.5-coder:1.5b", "task_type": "code"}
-   event: step     -> {"step_number": 1, "step_type": "act", "content": "Running OCR...", "tool_name": "ocr_extract"}
-   event: token    -> {"content": "Found 3 findings."}
-   event: done     -> {"task_id": "...", "output_files": ["outputs/MRPL_Approval_Note.docx"]}
-   ```
-
-2. **Amit ➔ Rahul & Pragyan (File Paths & Models):**
-   * Uploaded files stored at: `backend/data/uploads/{id}.{ext}`
-   * Generated deliverables at: `backend/data/outputs/{id}.{ext}`
-   * Database at: `backend/data/kavach.db`
-
-3. **Rahul ➔ Pragyan (RAG Handshake):**
-   * Rahul's `parse_document()` outputs clean string text.
-   * Rahul's `chunk_text()` outputs `list[dict(chunk_index=int, content=str)]`.
-   * Pragyan takes these chunks, embeds them with `get_embedding()`, and inserts them into SQLite.
-
-4. **Pragyan & Amit ➔ Ankit (Tool Registry):**
-   * Pragyan registers `knowledge_search` tool in Amit's registry.
-   * Amit registers `doc_generate`, `file_read`, and `ocr_extract` tools.
-   * Ankit's Agent calls them dynamically via `registry.execute_tool(name, params)`.
-
-5. **Pritam ➔ Basudev (Workspaces Navigation):**
-   * Pritam's pages (`/`, `/knowledge`, `/network`, `/tasks`, `/settings`) use Basudev's `Sidebar.tsx` and theme tokens.
+```
+[RAHUL: Samples & Parsers] ──► [AMIT: Database & Deliverable Tools] ──► [ANKIT: ReAct Agent Loop]
+                                                                                │
+                                                                                ▼
+[PRITAM: Network Monitor] ◄── [BASUDEV: Chat & Step Visualizer UI] ◄──── [ANKIT: SSE Streaming]
+             │                                     │
+             ▼                                     ▼
+[PRAGYAN: Verifies Demo Scenarios on UI & Leads Winning PPT Pitch Deck for Jury]
+```
 
 ---
 
-## 🎬 Final Demo Day Role Play (For the Jury)
+## 🎬 Demo Presentation Lineup
 
-| Developer | Stage Name | Exact Role in Live Presentation |
+| Member | Presentation Role | What to Do in Front of the Judges |
 |---|---|---|
-| 🌟 **ANKIT** | **Lead Presenter & AI Architect** | Explains multi-model routing, why 1B–3B models fit in 4.1GB VRAM, and how the ReAct agent loops autonomously without cloud APIs. |
-| 🌟 **AMIT** | **Backend & Systems Lead** | Explains on-premise execution, the msgspec serialization speedup, and the automated `.docx` approval note generation. |
-| 🎨 **BASUDEV** | **Master UI Driver** | Drives keyboard/mouse: uploads scanned PDF, triggers prompt, watches agent steps stream live, and downloads the generated Word deliverable. |
-| 🧠 **PRAGYAN** | **RAG & Knowledge Specialist** | Explains SQLite FTS5 hybrid search + RRF ranking, proving MRPL manuals are queried locally with zero cloud leakage. |
-| 🚀 **RAHUL** | **Data & Multimodal Specialist** | Explains how scanned refinery drawings and P&ID diagrams are processed locally via Qwen2.5-VL OCR. |
-| 💻 **PRITAM** | **Security & Air-Gap Auditor** | Switches to the `/network` tab on screen to demonstrate the live socket audit proving **Zero External Calls** to the judges. |
+| 📊 **PRAGYAN** | **Master Storyteller & Pitch Lead** | Opens the pitch with the MRPL problem statement, walks through the 10-slide deck, and introduces the live demo. |
+| 🌟 **ANKIT** | **AI Architect** | Explains the multi-model router, GPU preloading (`keep_alive=-1`), and ReAct agent planning. |
+| 🌟 **AMIT** | **Backend Lead** | Explains on-premise execution, the msgspec serialization speedup, and the automated `.docx` approval note generation. |
+| 🎨 **BASUDEV** | **Master UI Driver** | Drives keyboard/mouse live: uploads scanned PDF, triggers prompt, watches agent steps stream, and downloads Word deliverable. |
+| 🚀 **RAHUL** | **Data Specialist** | Explains how scanned refinery drawings and P&ID diagrams are parsed locally via Qwen2.5-VL. |
+| 💻 **PRITAM** | **Security Auditor** | Switches to the `/network` tab on screen to demonstrate the live socket audit proving **Zero External Calls** to the judges. |
