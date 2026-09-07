@@ -109,6 +109,9 @@ export default function ChatPage() {
               });
             }
             break;
+          case 'error':
+            newMsg.content += `\n\n**[System Error]**: Could not connect to the backend server. Please ensure the FastAPI backend is running on port 8000.`;
+            break;
         }
         return newMsg;
       });

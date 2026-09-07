@@ -56,7 +56,7 @@ export async function consumeSSEStream(
       }
     }
   } catch (error) {
-    console.error("Stream consumption failed:", error);
+    console.warn("Stream consumption failed:", error);
     onEvent({ type: 'error', data: { detail: (error as Error).message } });
   }
 }
