@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from app.tools.registry import register_tool
 
-DATA_DIR = Path("backend/data").resolve()
+DATA_DIR = Path("data").resolve() if Path("data").exists() else Path("backend/data").resolve()
 
 @register_tool("file_read")
 def file_read(filepath: str) -> str:

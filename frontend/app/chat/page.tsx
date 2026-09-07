@@ -6,7 +6,7 @@ import { MessageBubble } from "@/components/chat/MessageBubble";
 import { AgentStepCard } from "@/components/agent/AgentStepCard";
 import { DeliverableCard } from "@/components/agent/DeliverableCard";
 import { consumeSSEStream, uploadFiles, StreamEvent } from "@/lib/StreamConsumer";
-import { useChatStore, ChatMessage } from "@/lib/store";
+import { useChatStore } from "@/lib/store";
 import { v4 as uuidv4 } from 'uuid';
 
 export default function ChatPage() {
@@ -64,11 +64,12 @@ export default function ChatPage() {
       deliverables: []
     });
 
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const isAgentTask = message.toLowerCase().includes("plan") || message.toLowerCase().includes("execute");
-    const endpoint = isAgentTask ? "http://localhost:8000/api/agent/execute" : "http://localhost:8000/api/chat";
+    const endpoint = isAgentTask ? `${apiBase}/api/agent/execute` : `${apiBase}/api/chat`;
     const payload = isAgentTask 
-      ? { task_description: message, files: fileIds, max_steps: 10 } 
-      : { message: message, files: fileIds };
+      ? { task_description: message, file_ids: fileIds, files: fileIds, max_steps: 10 } 
+      : { message: message, file_ids: fileIds, files: fileIds };
 
     await consumeSSEStream(endpoint, payload, (event: StreamEvent) => {
       updateMessage(currentChatId, assistantMsgId, (msg) => {
@@ -79,39 +80,47 @@ export default function ChatPage() {
             newMsg.model = event.data.model;
             break;
           case 'token':
-            newMsg.content += event.data.content;
+            newMsg.content += (event.data.content ?? event.data.token ?? "");
             break;
-          case 'step':
+          case 'step': {
             if (!newMsg.steps) newMsg.steps = [];
-            const existingStepIdx = newMsg.steps.findIndex(s => s.id === event.data.step_number.toString());
+            const stepId = (event.data.step_number ?? event.data.step ?? 0).toString();
+            const rawType = event.data.type || "plan";
+            const stepType = (rawType === "action" ? "act" : rawType === "observation" ? "observe" : rawType === "reflection" ? "reflect" : rawType) as any;
+            const existingStepIdx = newMsg.steps.findIndex(s => s.id === stepId);
             if (existingStepIdx >= 0) {
               newMsg.steps[existingStepIdx].content += event.data.content;
             } else {
               newMsg.steps.push({
-                id: event.data.step_number.toString(),
-                type: event.data.type,
+                id: stepId,
+                type: stepType,
                 content: event.data.content,
                 isComplete: false
               });
             }
             break;
-          case 'tool_result':
+          }
+          case 'tool_result': {
+            const stepId = (event.data.step_number ?? event.data.step ?? 0).toString();
             if (newMsg.steps) {
-              const sIdx = newMsg.steps.findIndex(s => s.id === event.data.step_number.toString());
+              const sIdx = newMsg.steps.findIndex(s => s.id === stepId);
               if (sIdx >= 0) newMsg.steps[sIdx].isComplete = true;
             }
             if (event.data.file_id) {
               if (!newMsg.deliverables) newMsg.deliverables = [];
               newMsg.deliverables.push({
                 id: event.data.file_id,
-                filename: event.data.tool_output,
-                type: event.data.tool_output.endsWith('.docx') ? 'docx' : 'xlsx'
+                filename: event.data.tool_output || event.data.file_id,
+                type: (event.data.tool_output || '').endsWith('.xlsx') ? 'xlsx' : 'docx'
               });
             }
             break;
-          case 'error':
-            newMsg.content += `\n\n**[System Error]**: Could not connect to the backend server. Please ensure the FastAPI backend is running on port 8000.`;
+          }
+          case 'error': {
+            const errDetail = event.data.error || event.data.detail || "Could not connect to the backend server.";
+            newMsg.content += `\n\n**[Backend Notice]**: ${errDetail}`;
             break;
+          }
         }
         return newMsg;
       });

@@ -10,7 +10,8 @@ export default function KnowledgeBasePage() {
       
       <div className="p-6 bg-card border border-border rounded-xl">
         <p className="text-muted-foreground">
-          // @Pritam: Wire up the `GET /api/knowledge/documents` list here to show indexed MRPL SOPs and Refinery guidelines.
+          {/* @Pritam: Wire up the GET /api/knowledge/documents list here to show indexed MRPL SOPs and Refinery guidelines. */}
+          No SOP documents indexed yet. Upload documents using the Knowledge Base Manager.
         </p>
       </div>
     </div>

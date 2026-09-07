@@ -4,9 +4,10 @@ from pathlib import Path
 from docx import Document
 from openpyxl import Workbook
 from pptx import Presentation
+from app.core.config import settings
 from app.tools.registry import register_tool
 
-OUTPUT_DIR = Path("backend/data/outputs").resolve()
+OUTPUT_DIR = Path(settings.output_dir).resolve()
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 @register_tool("generate_word_document")

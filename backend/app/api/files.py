@@ -44,7 +44,7 @@ def get_file_type(filename: str, mime_type: str) -> str:
     return "other"
 
 
-@router.post("/upload", response_class=MsgspecJSONResponse)
+@router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
     """POST /api/files/upload — Upload one or more files."""
     uploaded_files = []
@@ -81,22 +81,24 @@ async def upload_files(files: List[UploadFile] = File(...)):
         )
         logger.info(f"Saved file {file.filename} as {file_id}")
 
-    return FileUploadResponse(files=uploaded_files)
+    return MsgspecJSONResponse(content=FileUploadResponse(files=uploaded_files))
 
 
-@router.get("/{file_id}", response_class=MsgspecJSONResponse)
+@router.get("/{file_id}")
 async def get_file_metadata(file_id: str):
     """GET /api/files/{id} — Retrieve file metadata."""
     db_file = await FileUpload.get_or_none(id=file_id)
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    return UploadedFile(
-        id=str(db_file.id),
-        original_name=db_file.original_name,
-        file_type=db_file.file_type,
-        file_size=db_file.file_size,
-        mime_type=db_file.mime_type,
+    return MsgspecJSONResponse(
+        content=UploadedFile(
+            id=str(db_file.id),
+            original_name=db_file.original_name,
+            file_type=db_file.file_type,
+            file_size=db_file.file_size,
+            mime_type=db_file.mime_type,
+        )
     )
 
 

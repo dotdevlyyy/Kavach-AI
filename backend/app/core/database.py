@@ -92,7 +92,7 @@ async def init_fts5():
 
 async def init_db():
     from tortoise import Tortoise
-    await Tortoise.init(config=TORTOISE_ORM)
+    await Tortoise.init(config=TORTOISE_ORM, _enable_global_fallback=True)
     await Tortoise.generate_schemas()
     await init_sqlite_pragmas()
     await init_fts5()

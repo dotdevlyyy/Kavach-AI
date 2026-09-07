@@ -3,7 +3,7 @@ from pathlib import Path
 from app.tools.registry import register_tool
 from app.core.ollama_client import ollama_client
 
-DATA_DIR = Path("backend/data").resolve()
+DATA_DIR = Path("data").resolve() if Path("data").exists() else Path("backend/data").resolve()
 
 @register_tool("extract_text_from_image")
 async def extract_text_from_image(filepath: str) -> str:

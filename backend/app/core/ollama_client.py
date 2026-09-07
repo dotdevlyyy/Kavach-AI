@@ -41,6 +41,11 @@ class OllamaManager:
         Returns:
             List of successfully preloaded model names.
         """
+        healthy, _ = await self.is_healthy()
+        if not healthy:
+            logger.warning(f"⚠️ Ollama server unreachable at {self.host}; skipping model preloading")
+            return []
+
         models = models or list(settings.models)
         loaded: list[str] = []
 
@@ -73,6 +78,10 @@ class OllamaManager:
         logger.info(f"🧠 Models in VRAM: {[m['name'] for m in ps]}")
 
         return loaded
+
+    async def preload_all_models(self) -> list[str]:
+        """Alias for preload_models to preload all configured models."""
+        return await self.preload_models()
 
     async def chat(
         self,

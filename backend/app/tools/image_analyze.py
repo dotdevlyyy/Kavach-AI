@@ -3,7 +3,7 @@ from pathlib import Path
 from app.tools.registry import register_tool
 from app.core.ollama_client import ollama_client
 
-DATA_DIR = Path("backend/data").resolve()
+DATA_DIR = Path("data").resolve() if Path("data").exists() else Path("backend/data").resolve()
 
 @register_tool("analyze_engineering_diagram")
 async def analyze_engineering_diagram(filepath: str, query: str) -> str:

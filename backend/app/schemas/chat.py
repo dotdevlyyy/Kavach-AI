@@ -1,16 +1,18 @@
 """
 Kavach AI — Chat Request/Response Schemas
-msgspec Structs for the /api/chat endpoints.
+Request models use Pydantic for FastAPI compatibility; event structs use msgspec.
 """
 
+from pydantic import BaseModel, Field
 import msgspec
 
 
-class ChatRequest(msgspec.Struct):
+class ChatRequest(BaseModel):
     """Request body for POST /api/chat."""
     message: str
     conversation_id: str | None = None
-    file_ids: list[str] = []
+    file_ids: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
     model_override: str | None = None
     system_prompt: str | None = None
     enable_knowledge_base: bool = True
@@ -47,8 +49,8 @@ class ConversationSummary(msgspec.Struct):
     title: str
     created_at: str
     updated_at: str
-    message_count: int
-    is_agent_mode: bool
+    message_count: int = 0
+    is_agent_mode: bool = False
 
 
 class MessageResponse(msgspec.Struct):
@@ -71,7 +73,7 @@ class ConversationDetail(msgspec.Struct):
     title: str
     created_at: str
     updated_at: str
+    is_agent_mode: bool = False
     model_override: str | None = None
     system_prompt: str | None = None
-    is_agent_mode: bool
     messages: list[MessageResponse] = []

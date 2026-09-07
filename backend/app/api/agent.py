@@ -23,12 +23,13 @@ async def execute_agent_task(request: AgentExecuteRequest):
     POST /api/agent/execute
     Streams SSE step events (Plan -> Act -> Observe -> Reflect -> Token -> Done).
     """
+    file_ids = request.file_ids or request.files
     return StreamingResponse(
         agent_loop.run_agent_stream(
             task_description=request.task_description,
             conversation_id=request.conversation_id,
             model_override=request.model_override,
-            file_ids=request.file_ids,
+            file_ids=file_ids,
             max_steps=request.max_steps or 10
         ),
         media_type="text/event-stream"

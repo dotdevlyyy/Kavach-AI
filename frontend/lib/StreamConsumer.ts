@@ -65,8 +65,9 @@ export async function uploadFiles(files: File[]): Promise<string[]> {
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));
   
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   try {
-    const res = await fetch('http://localhost:8000/api/files/upload', {
+    const res = await fetch(`${apiBase}/api/files/upload`, {
       method: 'POST',
       body: formData
     });

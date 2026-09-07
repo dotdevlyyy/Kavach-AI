@@ -86,7 +86,7 @@ async def chat_stream_endpoint(request: ChatRequest):
                 token_text = chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", "")
                 if token_text:
                     full_response += token_text
-                    yield f"event: token\ndata: {json.dumps({'token': token_text})}\n\n"
+                    yield f"event: token\ndata: {json.dumps({'content': token_text, 'token': token_text})}\n\n"
 
             # Persist assistant response
             await Message.create(

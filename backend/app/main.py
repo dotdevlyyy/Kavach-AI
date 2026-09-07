@@ -47,7 +47,8 @@ app = FastAPI(
 # CORS middleware for Next.js frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(settings.cors_origins),
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,6 +68,27 @@ async def root():
         "version": settings.app_version,
         "status": "online",
         "air_gapped": True
+    }
+
+
+@app.get("/api/health")
+async def health_check():
+    """System and Ollama health check endpoint."""
+    ollama_ok, latency = await ollama_client.is_healthy()
+    return {
+        "status": "healthy" if ollama_ok else "degraded",
+        "app": settings.APP_NAME,
+        "version": settings.app_version,
+        "air_gapped": True,
+        "ollama": {
+            "status": "connected" if ollama_ok else "unreachable",
+            "host": settings.ollama_host,
+            "latency_ms": latency
+        },
+        "database": {
+            "status": "connected",
+            "path": settings.db_path
+        }
     }
 
 

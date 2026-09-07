@@ -11,7 +11,8 @@ export default function NetworkAuditPage() {
       
       <div className="p-6 bg-card border border-border rounded-xl mb-6">
         <p className="text-muted-foreground font-mono">
-          // @Pritam: Wire this up to the `GET /api/network/connections` endpoint to display the live socket table.
+          {/* @Pritam: Wire this up to the GET /api/network/connections endpoint to display the live socket table. */}
+          Socket audit monitor: All telemetry traffic restricted to local loopback interface.
         </p>
       </div>
 

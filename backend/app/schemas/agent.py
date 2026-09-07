@@ -1,16 +1,18 @@
 """
 Kavach AI — Agent Request/Response Schemas
-msgspec Structs for the /api/agent endpoints.
+Request models use Pydantic for FastAPI compatibility; event structs use msgspec.
 """
 
+from pydantic import BaseModel, Field
 import msgspec
 
 
-class AgentExecuteRequest(msgspec.Struct):
+class AgentExecuteRequest(BaseModel):
     """Request body for POST /api/agent/execute."""
     task_description: str
     conversation_id: str | None = None
-    file_ids: list[str] = []
+    file_ids: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
     model_override: str | None = None
     max_steps: int = 10
     enable_knowledge_base: bool = True
