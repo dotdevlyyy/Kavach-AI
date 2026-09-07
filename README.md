@@ -25,6 +25,7 @@
 | 12 | [Video Script](12_VIDEO_SCRIPT.md) | 3-5 minute video with scene-by-scene voiceover |
 | 13 | [Competitor Analysis](13_COMPETITOR_ANALYSIS.md) | 6 direct competitors + 6 cloud platforms, feature matrix |
 | 14 | [Risk Mitigation](14_RISK_MITIGATION.md) | 10 risks with mitigations, edge cases |
+| 15 | [5-Developer Task List (TODO)](../TODO.md) | Full end-to-end task matrix & checkboxes for 5 developers |
 
 ---
 
