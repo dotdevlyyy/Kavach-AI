@@ -203,3 +203,6 @@ class OllamaManager:
     def preloaded_models(self) -> set[str]:
         """Set of model names that were successfully preloaded."""
         return self._preloaded.copy()
+
+# Singleton instance
+ollama_client = OllamaManager()

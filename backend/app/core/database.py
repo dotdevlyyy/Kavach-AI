@@ -89,3 +89,16 @@ async def init_fts5():
     """)
 
     logger.info("✅ FTS5 virtual table and sync triggers created")
+
+async def init_db():
+    from tortoise import Tortoise
+    await Tortoise.init(config=TORTOISE_ORM)
+    await Tortoise.generate_schemas()
+    await init_sqlite_pragmas()
+    await init_fts5()
+    logger.info("✅ Database initialized")
+
+async def close_db():
+    from tortoise import Tortoise
+    await Tortoise.close_connections()
+    logger.info("Database connections closed")

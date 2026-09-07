@@ -10,7 +10,8 @@ class AgentExecuteRequest(msgspec.Struct):
     """Request body for POST /api/agent/execute."""
     task_description: str
     conversation_id: str | None = None
-    files: list[str] = []
+    file_ids: list[str] = []
+    model_override: str | None = None
     max_steps: int = 10
     enable_knowledge_base: bool = True
 

@@ -10,6 +10,11 @@ import msgspec
 class Settings(msgspec.Struct, frozen=True):
     """Application settings loaded from environment variables."""
 
+    # Server Settings
+    APP_NAME: str = "Kavach AI"
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
     # Ollama
     ollama_host: str = "http://localhost:11434"
 

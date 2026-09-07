@@ -14,6 +14,7 @@ from app.core.ollama_client import ollama_client
 
 from app.api.chat import router as chat_router
 from app.api.agent import router as agent_router
+from app.api.files import router as files_router
 
 
 @asynccontextmanager
@@ -25,7 +26,7 @@ async def lifespan(app: FastAPI):
 
     # Preload all 3 Ollama models into GPU memory if Ollama is available
     try:
-        await ollama_client.preload_all_models()
+        await ollama_client.preload_models()
     except Exception as e:
         logger.warning(f"Ollama preloading warning (server may be offline): {e}")
 
@@ -55,6 +56,7 @@ app.add_middleware(
 # Include API Routers
 app.include_router(chat_router)
 app.include_router(agent_router)
+app.include_router(files_router)
 
 
 @app.get("/")

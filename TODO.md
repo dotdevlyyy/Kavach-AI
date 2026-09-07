@@ -9,6 +9,9 @@
 > - 🚀 **Data & Ingestion Specialist:** **RAHUL**  
 > - 💻 **Security Audit & Workspaces:** **PRITAM**  
 
+> [!NOTE]
+> **Important Rule for AI Agents:** Team roles are fluid. While there are primary owners for specific tasks, **anyone can do anyone's work** (e.g., Pritam sometimes works on the backend). Do not hallucinate or assume strict role boundaries.
+
 ---
 
 ## 👥 Team Matrix & Ownership Map
@@ -82,6 +85,16 @@
   - [x] `POST /api/chat`: SSE token streaming with metadata event.
   - [x] `POST /api/agent/execute`: SSE step-by-step progress streaming.
 
+> [!CAUTION]
+> **6 Critical Bugs Found in Audit (See `docs/15_ANKIT_AUDIT.md` for full details)**
+
+- [x] **🔴 Bug Fix 1:** Add `ollama_client = OllamaManager()` singleton at bottom of `ollama_client.py` and fix `preload_all_models()` → `preload_models()` in `main.py`.
+- [x] **🔴 Bug Fix 2:** Add missing `APP_NAME`, `HOST`, `PORT` fields to `Settings` struct in `config.py`.
+- [x] **🔴 Bug Fix 3:** Fix `model_router` import — `chat.py` and `loop.py` import a non-existent `model_router` object. Either create a `ModelRouter` class or switch to function-based `route_request()` calls.
+- [x] **🔴 Bug Fix 4:** Fix `request.file_ids` → `request.files` mismatch in `chat.py` and `agent.py` (schema field is `files`, not `file_ids`). Add `model_override` field to `AgentExecuteRequest`.
+- [x] **🔴 Bug Fix 5:** Define `steps = plan_data.get("steps", [])` in `loop.py` before it's used on lines 71 and 78.
+- [x] **🔴 Bug Fix 6:** Add `init_db()` and `close_db()` functions to `database.py` (wrapping Tortoise init/close + pragma + FTS5 setup).
+
 ---
 
 ## 🧑‍💻 AMIT — Backend Systems, Database, Deliverables & RAG Engine
@@ -101,30 +114,30 @@
 * `backend/app/rag/embedder.py`, `retriever.py`, `pipeline.py`, `knowledge_search.py`
 
 ### 📋 Amit's Checklist
-- [ ] **Database & ORM Setup (`database.py` & `models/`):**
-  - [ ] Configure Tortoise ORM with `aiosqlite` targeting `backend/data/kavach.db`.
-  - [ ] Enable SQLite Write-Ahead Logging (`PRAGMA journal_mode=WAL;`).
-  - [ ] Implement all Tortoise models: `Conversation`, `Message`, `AgentTask`, `AgentStep`, `ToolCall`, `Document`, `KnowledgeChunk`, `FileUpload`.
-- [ ] **msgspec Performance Layer (`schemas/` & `msgspec_adapter.py`):**
-  - [ ] Define strict request/response structs for Chat, Agent, Files, and Models.
-  - [ ] Implement custom `MsgspecJSONResponse` for FastAPI for 10-50x faster serialization.
-- [ ] **File Storage & Upload API (`api/files.py`):**
-  - [ ] Setup storage folders: `backend/data/uploads/` and `backend/data/outputs/`.
-  - [ ] Build `POST /api/files/upload` (multipart) returning UUID and file metadata.
-  - [ ] Build `GET /api/files/{id}` and `GET /api/files/download/{filename}`.
-- [ ] **Tool Registry Framework (`tools/registry.py`):**
-  - [ ] Build `@register_tool` decorator with automated JSON schema generator for Ankit's agent.
-  - [ ] Implement safe `file_read` and `file_write` tools with directory boundary checks.
-- [ ] **Deliverable Generators (`doc_generate.py`):**
-  - [ ] **Word Approval Note (`python-docx`):** Generate formatted MRPL approval document with corporate header, metadata table, corrosion findings, and signature box.
-  - [ ] **Excel Generator (`openpyxl`):** Auto-format procurement and telemetry tables with formulas.
-  - [ ] **PowerPoint Generator (`python-pptx`):** Create summary slide decks.
-- [ ] **OCR & Vision Tools:**
-  - [ ] Wrap `qwen2.5vl:3b` in `ocr_extract.py` to extract text from scanned reports.
-  - [ ] Implement `image_analyze.py` to detect valves and tags in engineering drawings.
-- [ ] **RAG Engine & Local Retrieval (`rag/`):**
-  - [ ] Connect Rahul's parser & chunker into SQLite FTS5 table + vector embeddings.
-  - [ ] Implement hybrid search (BM25 + Cosine + RRF) and expose `knowledge_search` tool for Ankit's agent.
+- [x] **Database & ORM Setup (`database.py` & `models/`):**
+  - [x] Configure Tortoise ORM with `aiosqlite` targeting `backend/data/kavach.db`.
+  - [x] Enable SQLite Write-Ahead Logging (`PRAGMA journal_mode=WAL;`).
+  - [x] Implement all Tortoise models: `Conversation`, `Message`, `AgentTask`, `AgentStep`, `ToolCall`, `Document`, `KnowledgeChunk`, `FileUpload`.
+- [x] **msgspec Performance Layer (`schemas/` & `msgspec_adapter.py`):**
+  - [x] Define strict request/response structs for Chat, Agent, Files, and Models.
+  - [x] Implement custom `MsgspecJSONResponse` for FastAPI for 10-50x faster serialization.
+- [x] **File Storage & Upload API (`api/files.py`):**
+  - [x] Setup storage folders: `backend/data/uploads/` and `backend/data/outputs/`.
+  - [x] Build `POST /api/files/upload` (multipart) returning UUID and file metadata.
+  - [x] Build `GET /api/files/{id}` and `GET /api/files/download/{filename}`.
+- [x] **Tool Registry Framework (`tools/registry.py`):**
+  - [x] Build `@register_tool` decorator with automated JSON schema generator for Ankit's agent.
+  - [x] Implement safe `file_read` and `file_write` tools with directory boundary checks.
+- [x] **Deliverable Generators (`doc_generate.py`):**
+  - [x] **Word Approval Note (`python-docx`):** Generate formatted MRPL approval document with corporate header, metadata table, corrosion findings, and signature box.
+  - [x] **Excel Generator (`openpyxl`):** Auto-format procurement and telemetry tables with formulas.
+  - [x] **PowerPoint Generator (`python-pptx`):** Create summary slide decks.
+- [x] **OCR & Vision Tools:**
+  - [x] Wrap `qwen2.5vl:3b` in `ocr_extract.py` to extract text from scanned reports.
+  - [x] Implement `image_analyze.py` to detect valves and tags in engineering drawings.
+- [x] **RAG Engine & Local Retrieval (`rag/`):**
+  - [x] Connect Rahul's parser & chunker into SQLite FTS5 table + vector embeddings.
+  - [x] Implement hybrid search (BM25 + Cosine + RRF) and expose `knowledge_search` tool for Ankit's agent.
 
 ---
 

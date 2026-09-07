@@ -9,7 +9,7 @@ import asyncio
 from typing import AsyncGenerator, List, Optional, Dict, Any
 from loguru import logger
 
-from app.router.router import model_router
+from app.router.router import route_request
 from app.agent.planner import planner
 from app.agent.executor import executor
 from app.agent.observer import observer
@@ -38,12 +38,10 @@ class AgentLoop:
         conv_id = conversation_id or str(uuid.uuid4())
 
         # Step 1: Model Routing
-        route = await model_router.route_request(
-            prompt=task_description,
-            file_ids=file_ids,
+        selected_model, route_metadata = route_request(
+            message=task_description,
             model_override=model_override
         )
-        selected_model = route.selected_model
 
         # Emit metadata event
         meta_event = {
@@ -52,8 +50,8 @@ class AgentLoop:
                 "task_id": task_id,
                 "conversation_id": conv_id,
                 "model": selected_model,
-                "task_type": route.classification.task_type.value,
-                "reasoning": route.routing_reason
+                "task_type": route_metadata.task_type,
+                "reasoning": route_metadata.reasoning
             })
         }
         yield f"event: {meta_event['event']}\ndata: {meta_event['data']}\n\n"
@@ -67,6 +65,7 @@ class AgentLoop:
             file_ids=file_ids
         )
 
+        steps = plan_data.get("steps", [])
         goal_text = plan_data.get("goal", task_description)
         yield f"event: step\ndata: {json.dumps({'type': 'plan', 'content': f'Plan created with {len(steps)} steps: {goal_text}'})}\n\n"
 

@@ -10,7 +10,7 @@ class ChatRequest(msgspec.Struct):
     """Request body for POST /api/chat."""
     message: str
     conversation_id: str | None = None
-    files: list[str] = []
+    file_ids: list[str] = []
     model_override: str | None = None
     system_prompt: str | None = None
     enable_knowledge_base: bool = True

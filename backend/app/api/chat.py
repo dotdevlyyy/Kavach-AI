@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from app.schemas.chat import ChatRequest
-from app.router.router import model_router
+from app.router.router import route_request
 from app.core.ollama_client import ollama_client
 
 
@@ -29,20 +29,18 @@ async def chat_stream_endpoint(request: ChatRequest):
     async def event_generator():
         try:
             # Route model dynamically based on heuristic classifier
-            route = await model_router.route_request(
-                prompt=request.message,
-                file_ids=request.file_ids,
+            selected_model, route_metadata = route_request(
+                message=request.message,
                 model_override=request.model_override
             )
-            selected_model = route.selected_model
 
             # Emit metadata event first
             metadata = {
                 "conversation_id": conversation_id,
                 "model": selected_model,
-                "task_type": route.classification.task_type.value,
-                "confidence": route.classification.confidence,
-                "reasoning": route.routing_reason
+                "task_type": route_metadata.task_type,
+                "confidence": route_metadata.confidence,
+                "reasoning": route_metadata.reasoning
             }
             yield f"event: metadata\ndata: {json.dumps(metadata)}\n\n"
 
