@@ -27,6 +27,8 @@ interface ChatStore {
   deleteChat: (id: string) => void;
   addMessage: (chatId: string, message: ChatMessage) => void;
   updateMessage: (chatId: string, messageId: string, updater: (msg: ChatMessage) => ChatMessage) => void;
+  isSidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 export const useChatStore = create<ChatStore>()(
@@ -34,6 +36,9 @@ export const useChatStore = create<ChatStore>()(
     (set, get) => ({
       chats: [],
       activeChatId: null,
+      isSidebarCollapsed: false,
+
+      toggleSidebar: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
 
       setActiveChat: (id) => set({ activeChatId: id }),
 

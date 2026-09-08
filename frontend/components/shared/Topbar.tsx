@@ -2,15 +2,17 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { User, Settings, LogOut, ShieldAlert } from "lucide-react";
+import { User, Settings, LogOut, ShieldAlert, PanelLeft } from "lucide-react";
 import { toast } from "sonner";
 
 import { AnimatedThemeToggler } from "./AnimatedThemeToggler";
+import { useChatStore } from "@/lib/store";
 
 export function Topbar() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const toggleSidebar = useChatStore((state) => state.toggleSidebar);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -34,6 +36,13 @@ export function Topbar() {
   return (
     <div className="h-16 bg-background border-b border-border flex items-center justify-between px-6 shrink-0 relative z-50">
       <div className="flex items-center gap-4">
+        <button 
+          onClick={toggleSidebar}
+          className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-foreground transition-colors mr-1"
+          title="Toggle Sidebar"
+        >
+          <PanelLeft className="w-5 h-5" />
+        </button>
         <h1 className="text-foreground font-medium">MRPL Agentic Workbench</h1>
         <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
