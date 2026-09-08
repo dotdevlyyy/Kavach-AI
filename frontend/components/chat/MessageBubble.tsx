@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ModelBadge } from "./ModelBadge";
+import { toast } from "sonner";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -16,11 +17,11 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
   const isUser = role === "user";
 
   return (
-    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-6`}>
-      <div className={`max-w-[80%] rounded-xl px-5 py-4 shadow-sm ${
+    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-8`}>
+      <div className={`max-w-[85%] ${
         isUser 
-          ? "bg-primary text-primary-foreground rounded-tr-sm" 
-          : "bg-card border border-border text-card-foreground rounded-tl-sm"
+          ? "bg-gray-100 text-gray-900 rounded-2xl px-5 py-3" 
+          : "text-gray-900 px-2"
       }`}>
         {/* Header for assistant messages showing which model answered */}
         {!isUser && model && (
@@ -33,7 +34,7 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
         )}
 
         {/* Content using ReactMarkdown */}
-        <div className="prose prose-invert max-w-none text-sm">
+        <div className="prose max-w-none text-sm text-gray-800">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -46,7 +47,9 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
                       <button 
                         onClick={() => {
                           navigator.clipboard.writeText(String(children).replace(/\n$/, ""));
-                          alert("Code copied to clipboard!"); // Simple visual feedback
+                          toast.success("Code copied to clipboard", {
+                            description: "You can now paste this directly into your IDE.",
+                          });
                         }}
                         className="hover:text-primary transition-colors cursor-pointer"
                       >

@@ -1,23 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 import { Sidebar } from "@/components/shared/Sidebar";
 import { Topbar } from "@/components/shared/Topbar";
+import { Toaster } from "sonner";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Kavach AI Workbench",
-  description: "Sovereign On-Premise Agentic AI Workbench",
+  title: "Kavach AI | MRPL Workbench",
+  description: "Air-gapped agentic AI workbench for industrial applications.",
 };
 
 export default function RootLayout({
@@ -26,17 +18,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased h-screen overflow-hidden flex`}
-      >
+    <html lang="en">
+      <body className={`${inter.className} bg-background text-foreground flex h-screen overflow-hidden`}>
         <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
           <Topbar />
-          <main className="flex-1 overflow-auto bg-background/50">
+          <main className="flex-1 overflow-auto bg-white">
             {children}
           </main>
         </div>
+        <Toaster theme="light" position="bottom-right" className="font-sans" />
       </body>
     </html>
   );

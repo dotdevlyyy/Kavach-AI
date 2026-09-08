@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Activity, ShieldCheck, Cpu, RefreshCw } from "lucide-react";
+import GlareHover from "@/components/ui/GlareHover";
 
 interface HealthData {
   status: string;
@@ -64,55 +65,61 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* VRAM / Model status */}
-        <div className="p-6 bg-card border border-border rounded-xl">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-primary">GPU VRAM Allocated</h2>
-            <Cpu className="w-5 h-5 text-primary opacity-80" />
+        <GlareHover glareColor="#f59e0b" glareOpacity={0.15} borderRadius="0.75rem" className="h-full">
+          <div className="p-6 bg-card border border-border rounded-xl h-full transition-colors hover:border-primary/50">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-primary">GPU VRAM Allocated</h2>
+              <Cpu className="w-5 h-5 text-primary opacity-80" />
+            </div>
+            <p className="text-3xl font-bold text-foreground">4.1 / 8 GB</p>
+            <div className="w-full bg-sidebar-accent h-2 mt-4 rounded-full overflow-hidden">
+              <div className="bg-primary w-[51%] h-full" />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Allocated for 3 concurrent hot-swappable models</p>
           </div>
-          <p className="text-3xl font-bold text-foreground">4.1 / 8 GB</p>
-          <div className="w-full bg-sidebar-accent h-2 mt-4 rounded-full overflow-hidden">
-            <div className="bg-primary w-[51%] h-full" />
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">Allocated for 3 concurrent hot-swappable models</p>
-        </div>
+        </GlareHover>
 
         {/* Network Air-Gap */}
-        <div className="p-6 bg-card border border-border rounded-xl">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-emerald-500">Air-Gap Sovereignty</h2>
-            <ShieldCheck className="w-5 h-5 text-emerald-500 opacity-80" />
+        <GlareHover glareColor="#10b981" glareOpacity={0.15} borderRadius="0.75rem" className="h-full">
+          <div className="p-6 bg-card border border-border rounded-xl h-full transition-colors hover:border-emerald-500/50">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-emerald-500">Air-Gap Sovereignty</h2>
+              <ShieldCheck className="w-5 h-5 text-emerald-500 opacity-80" />
+            </div>
+            <p className="text-3xl font-bold text-foreground">100% Secure</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              {health?.air_gapped ? "Strict air-gap mode verified — 0 external packets" : "Air-gap security active"}
+            </p>
           </div>
-          <p className="text-3xl font-bold text-foreground">100% Secure</p>
-          <p className="text-xs text-muted-foreground mt-2">
-            {health?.air_gapped ? "Strict air-gap mode verified — 0 external packets" : "Air-gap security active"}
-          </p>
-        </div>
+        </GlareHover>
 
-        {/* Database & Service Health */}
-        <div className="p-6 bg-card border border-border rounded-xl">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-purple-400">Core Services</h2>
-            <Activity className="w-5 h-5 text-purple-400 opacity-80" />
+        {/* Core Services & Health Status */}
+        <GlareHover glareColor="#a78bfa" glareOpacity={0.15} borderRadius="0.75rem" className="h-full">
+          <div className="p-6 bg-card border border-border rounded-xl h-full transition-colors hover:border-purple-400/50">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-purple-400">Core Services</h2>
+              <Activity className="w-5 h-5 text-purple-400 opacity-80" />
+            </div>
+            <div className="space-y-2 text-xs font-mono mt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">FastAPI Backend</span>
+                <span className="text-emerald-500 font-bold">● {health ? "ONLINE" : "CONNECTING"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">SQLite WAL DB</span>
+                <span className={health?.database ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>
+                  ● {health?.database ? "READY" : "LOCAL"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Ollama Model Host</span>
+                <span className={health?.ollama?.status === "connected" ? "text-emerald-500 font-bold" : "text-amber-400 font-bold"}>
+                  ● {health?.ollama?.status === "connected" ? "CONNECTED" : "OFFLINE / LOCAL"}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="space-y-2 text-xs font-mono mt-3">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">FastAPI Backend</span>
-              <span className="text-emerald-500 font-bold">● {health ? "ONLINE" : "CONNECTING"}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">SQLite WAL DB</span>
-              <span className={health?.database ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>
-                ● {health?.database ? "READY" : "LOCAL"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Ollama Model Host</span>
-              <span className={health?.ollama?.status === "connected" ? "text-emerald-500 font-bold" : "text-amber-400 font-bold"}>
-                ● {health?.ollama?.status === "connected" ? "CONNECTED" : "OFFLINE / LOCAL"}
-              </span>
-            </div>
-          </div>
-        </div>
+        </GlareHover>
       </div>
 
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">

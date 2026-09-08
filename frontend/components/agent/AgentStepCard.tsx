@@ -36,32 +36,38 @@ export function AgentStepCard({ step }: AgentStepCardProps) {
   const Icon = config.icon;
 
   return (
-    <div className="mb-4 bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+    <div className="mb-2 bg-white rounded-xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100">
       {/* Header */}
       <div 
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-sidebar-accent/50 transition-colors"
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3">
-          <div className={`p-1.5 rounded-md ${config.bg} ${config.color}`}>
+          <div className="p-1 rounded-md text-gray-500">
             <Icon className="w-4 h-4" />
           </div>
-          <span className="font-semibold text-sm text-card-foreground">
+          <span className="font-medium text-sm text-gray-700">
             {config.label}
           </span>
           {!step.isComplete && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+          )}
+          {step.isComplete && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-100">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Completed
+            </span>
           )}
         </div>
-        <div className="text-muted-foreground">
+        <div className="text-gray-400">
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
       </div>
 
       {/* Content Body */}
       {isExpanded && (
-        <div className="px-4 py-3 border-t border-border bg-sidebar-accent/30 text-sm text-card-foreground/90 font-mono whitespace-pre-wrap">
-          {step.content || <span className="text-muted-foreground italic">Thinking...</span>}
+        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 text-sm text-gray-600 font-mono whitespace-pre-wrap">
+          {step.content || <span className="text-gray-400 italic">Thinking...</span>}
         </div>
       )}
     </div>
