@@ -129,10 +129,12 @@ export default function ChatPage() {
     setIsStreaming(false);
   };
 
+  const hasUserMessage = messages.some((m: any) => m.role === "user");
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-white text-black">
-        <div className="max-w-4xl mx-auto h-full flex flex-col">
+    <div className="min-h-full flex flex-col bg-white text-black">
+      <div className="flex-1 p-6">
+        <div className={`max-w-4xl mx-auto ${!hasUserMessage ? 'min-h-[calc(100vh-200px)] flex flex-col' : ''}`}>
           {messages.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center mt-[-100px]">
               <div className="flex items-center justify-center gap-4 mb-4 text-gray-700">
@@ -199,7 +201,7 @@ export default function ChatPage() {
       </div>
       
       {/* Suggestion Chips and Chat Window */}
-      <div className="p-4 bg-white shrink-0">
+      <div className="sticky bottom-0 z-10 p-4 bg-white shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         {messages.length === 0 && (
           <div className="max-w-4xl mx-auto flex gap-2 mb-3 px-2 overflow-x-auto">
             <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
