@@ -243,19 +243,19 @@
 * `samples/financial_data.xlsx`
 
 ### 📋 Rahul's Checklist
-- [ ] **Document Parser (`parser.py`):**
-  - [ ] Write `parse_pdf(file_path)` using `fitz` (`PyMuPDF`) to extract text from digital PDFs.
-  - [ ] Write `parse_docx(file_path)` using `python-docx` to extract text from Word files.
-  - [ ] Write `parse_txt(file_path)` to read `.txt` and `.md` files in UTF-8.
-  - [ ] Create master `parse_document(file_path)` routing by file extension.
-- [ ] **Text Chunker (`chunker.py`):**
-  - [ ] Write sliding-window chunking function (512 tokens per chunk with 64-token overlap).
-  - [ ] Split on paragraph/sentence boundaries so thoughts aren't cut mid-sentence.
-- [ ] **Demo Datasets Curation (`samples/`):**
-  - [ ] Create `refinery_sop.txt`: Standard operating procedure for MRPL Crude Distillation Unit (CDU) corrosion monitoring.
-  - [ ] Create or source `inspection_report.pdf`: 2-page sample inspection report with corrosion thickness readings.
-  - [ ] Create `pid_drawing.png`: Sample P&ID schematic showing tower T-101 and safety relief valves.
-  - [ ] Create `financial_data.xlsx`: Sample vendor procurement sheet.
+- [x] **Document Parser (`parser.py`):**
+  - [x] Write `parse_pdf(file_path)` using `fitz` (`PyMuPDF`) to extract text from digital PDFs.
+  - [x] Write `parse_docx(file_path)` using `python-docx` to extract text from Word files.
+  - [x] Write `parse_txt(file_path)` to read `.txt` and `.md` files in UTF-8.
+  - [x] Create master `parse_document(file_path)` routing by file extension.
+- [x] **Text Chunker (`chunker.py`):**
+  - [x] Write sliding-window chunking function (512 tokens per chunk with 64-token overlap).
+  - [x] Split on paragraph/sentence boundaries so thoughts aren't cut mid-sentence.
+- [x] **Demo Datasets Curation (`samples/`):**
+  - [x] Create `refinery_sop.txt`: Standard operating procedure for MRPL Crude Distillation Unit (CDU) corrosion monitoring.
+  - [x] Create or source `inspection_report.pdf`: 2-page sample inspection report with corrosion thickness readings.
+  - [x] Create `pid_drawing.png`: Sample P&ID schematic showing tower T-101 and safety relief valves.
+  - [x] Create `financial_data.xlsx`: Sample vendor procurement sheet.
 
 ---
 
