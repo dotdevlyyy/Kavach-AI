@@ -131,10 +131,6 @@ ROUTING_TABLE: dict[TaskType, str] = {
 def get_model_for_task(task_type: TaskType) -> str:
     """Return the model name for a given task type."""
     return ROUTING_TABLE.get(task_type, "llama3.2:1b")
-
-def get_all_models() -> list[str]:
-    """Return all unique models in the routing table."""
-    return list(set(ROUTING_TABLE.values()))
 ```
 
 ### Model Routing Metadata (sent to frontend)
@@ -192,170 +188,70 @@ The Agent Engine implements a **ReAct (Reasoning + Acting)** loop that enables m
 
 ### Agent Loop Implementation
 
+The loop lives in `app/agent/loop.py` as the module-level function `run_agent_stream` (not a class). Each step emits SSE events; the planner returns JSON, the executor dispatches via the tool registry, the observer generates a reflection, and a final token stream summarises the result.
+
 ```python
-# app/agent/loop.py
-from ollama import AsyncClient
-from app.tools.registry import ToolRegistry
-from app.router.router import get_model_for_task
-from app.schemas.common import TaskType, StepType
+# app/agent/loop.py (canonical shape)
+async def run_agent_stream(
+    task_description: str,
+    conversation_id: str | None = None,
+    file_ids: list[str] = [],
+    max_steps: int = 10,
+    cancel_event: asyncio.Event | None = None,
+) -> AsyncGenerator[str, None]:
+    """Yields SSE-formatted strings: metadata, step, tool_result, token, done."""
 
-AGENT_SYSTEM_PROMPT = """You are Kavach AI, a sovereign on-premise AI assistant.
-You help industrial users with tasks by planning and using tools.
+    # 1. Routing
+    selected_model, route_metadata = await route_request(...)
 
-Available tools:
-{tool_descriptions}
+    # 2. ReAct loop: for each step
+    for step_idx in range(1, max_steps + 1):
+        if cancelled():
+            break
+        plan_steps = await planner.create_plan(messages)
+        act = await executor.execute_step(step_idx, plan.tool, plan.tool_input)
+        obs = await observer.observe(act)
+        yield sse("step", {"type": "act"|"observe"|"reflect", "step": step_idx, ...})
 
-When you need to use a tool, respond with:
-TOOL_CALL: tool_name(param1="value1", param2="value2")
-
-When you are done with the task, respond with:
-TASK_COMPLETE: <summary of what was accomplished>
-
-Think step by step. After each tool result, reflect on whether you have enough
-information to complete the task or need additional steps.
-"""
-
-class AgentLoop:
-    def __init__(self, ollama_client: AsyncClient, tool_registry: ToolRegistry):
-        self.client = ollama_client
-        self.tools = tool_registry
-        self.max_steps = 10
-    
-    async def execute(self, task_description: str, files: list[str], max_steps: int = 10):
-        """Execute an agentic task. Yields steps as they happen."""
-        
-        self.max_steps = max_steps
-        messages = []
-        
-        # System prompt with tool descriptions
-        system_prompt = AGENT_SYSTEM_PROMPT.format(
-            tool_descriptions=self.tools.get_descriptions()
-        )
-        messages.append({"role": "system", "content": system_prompt})
-        
-        # User task
-        task_message = f"Task: {task_description}"
-        if files:
-            task_message += f"\n\nAvailable files: {', '.join(files)}"
-        messages.append({"role": "user", "content": task_message})
-        
-        step_number = 0
-        
-        while step_number < self.max_steps:
-            step_number += 1
-            
-            # Determine model based on current context
-            task_type = self._infer_task_type(messages)
-            model = get_model_for_task(task_type)
-            
-            # Get LLM response
-            response = await self.client.chat(
-                model=model,
-                messages=messages,
-                keep_alive=-1,
-            )
-            
-            content = response.message.content
-            
-            # Check if task is complete
-            if "TASK_COMPLETE:" in content:
-                summary = content.split("TASK_COMPLETE:")[-1].strip()
-                yield {
-                    "step_number": step_number,
-                    "type": StepType.REFLECT,
-                    "content": summary,
-                    "model_used": model,
-                    "is_final": True,
-                }
-                break
-            
-            # Check for tool calls
-            if "TOOL_CALL:" in content:
-                # Parse tool call
-                tool_name, tool_input = self._parse_tool_call(content)
-                
-                # Yield the action step
-                yield {
-                    "step_number": step_number,
-                    "type": StepType.ACT,
-                    "content": content,
-                    "model_used": model,
-                    "tool_call": {"tool_name": tool_name, "tool_input": tool_input},
-                }
-                
-                # Execute tool
-                tool_result = await self.tools.execute(tool_name, tool_input)
-                
-                # Yield tool result
-                yield {
-                    "step_number": step_number,
-                    "type": StepType.OBSERVE,
-                    "content": f"Tool '{tool_name}' returned:\n{tool_result}",
-                    "tool_result": tool_result,
-                }
-                
-                # Add to conversation
-                messages.append({"role": "assistant", "content": content})
-                messages.append({"role": "user", "content": f"Tool result:\n{tool_result}"})
-            else:
-                # Pure reasoning step (plan or reflect)
-                step_type = StepType.PLAN if step_number == 1 else StepType.REFLECT
-                yield {
-                    "step_number": step_number,
-                    "type": step_type,
-                    "content": content,
-                    "model_used": model,
-                }
-                messages.append({"role": "assistant", "content": content})
-        
-        # If max steps reached without completion
-        if step_number >= self.max_steps:
-            yield {
-                "step_number": step_number,
-                "type": StepType.REFLECT,
-                "content": "Maximum steps reached. Task may be incomplete.",
-                "is_final": True,
-                "status": "max_steps_reached",
-            }
+    # 3. Final synthesis + done event
 ```
+
+Timeouts (intentionally hardcoded as constants in the loop; no config knob — edit `app/agent/loop.py` and redeploy if a value needs to change):
+- `PER_TASK_SECONDS = 300` (5 min total)
+- `PER_STEP_SECONDS = 60` (per-step `asyncio.wait_for` ceiling)
 
 ### Tool Registry
 
+The registry is a flat dict with a decorator-based registration pattern, not a class hierarchy:
+
 ```python
 # app/tools/registry.py
-from typing import Callable, Any
+_TOOL_REGISTRY: dict[str, Callable] = {}
 
-class Tool:
-    def __init__(self, name: str, description: str, parameters: dict, handler: Callable):
-        self.name = name
-        self.description = description
-        self.parameters = parameters
-        self.handler = handler
+def register_tool(name: str):
+    def decorator(func):
+        _TOOL_REGISTRY[name] = func
+        return func
+    return decorator
 
-class ToolRegistry:
-    def __init__(self):
-        self._tools: dict[str, Tool] = {}
-    
-    def register(self, name: str, description: str, parameters: dict, handler: Callable):
-        self._tools[name] = Tool(name, description, parameters, handler)
-    
-    async def execute(self, tool_name: str, tool_input: dict) -> str:
-        if tool_name not in self._tools:
-            return f"Error: Unknown tool '{tool_name}'"
-        tool = self._tools[tool_name]
-        try:
-            result = await tool.handler(**tool_input)
-            return str(result)
-        except Exception as e:
-            return f"Error executing {tool_name}: {str(e)}"
-    
-    def get_descriptions(self) -> str:
-        lines = []
-        for tool in self._tools.values():
-            params_str = ", ".join(f'{k}: {v}' for k, v in tool.parameters.items())
-            lines.append(f"- {tool.name}({params_str}): {tool.description}")
-        return "\n".join(lines)
+async def execute_tool(name: str, kwargs: dict) -> Any:
+    func = _TOOL_REGISTRY[name]
+    if inspect.iscoroutinefunction(func):
+        return await func(**kwargs)
+    return func(**kwargs)
 ```
+
+Usage in a tool module:
+
+```python
+# app/tools/file_read.py
+@register_tool("file_read")
+async def file_read(file_path: str) -> str:
+    """Read sandboxed file. Returns content or error string."""
+    ...
+```
+
+Tools register themselves at import time; `app/agent/executor.py` imports each tool module so the decorators fire at startup. The planner prompt's tool list is hard-coded in `app/agent/planner.py:13-38` (no dynamic `get_descriptions()`).
 
 ### Available Tools
 

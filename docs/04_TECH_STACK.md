@@ -60,8 +60,8 @@
 
 ### msgspec — `0.19+`
 
-- **Role:** Request/response schemas, configuration structs, serialization
-- **Why chosen over Pydantic:**
+- **Role:** Fast serialization of structured payloads (response Structs, embeddings, KB search results).
+- **Why chosen over Pydantic for hot paths:**
 
 | Feature | msgspec | Pydantic v2 |
 |---|---|---|
@@ -69,25 +69,36 @@
 | Memory usage | **~3x less** | Baseline |
 | Struct size | Smaller (C extension) | Larger |
 | JSON encode/decode | Built-in, zero-copy | Via json module |
-| Validation | Yes, strict | Yes, more flexible |
-| FastAPI integration | Needs custom, but straightforward | Built-in |
 
-- **Key trade-off:** FastAPI doesn't natively support msgspec Structs, but we implement a small adapter (~30 lines) to make it work seamlessly.
+- **Where each is used:**
+  - **Pydantic `BaseModel`** — request bodies (`app/schemas/{chat,agent,files}.py`). FastAPI wires validation natively.
+  - **msgspec `json.encode`** — selective hot-path JSON encoding inside `app/api/files.py:_msgspec_response`. Response payloads elsewhere are plain dicts.
+- **Why both:** request validation is on the cold path (Pydantic wins on ergonomics); JSON encode for the few high-traffic metadata responses saves a few microseconds each.
 
 ```python
-import msgspec
+# app/schemas/chat.py
+from pydantic import BaseModel, Field
 
-class ChatRequest(msgspec.Struct):
+class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
-    files: list[str] = []
-    
-class ChatResponse(msgspec.Struct):
-    id: str
-    model: str
-    content: str
-    task_type: str
-    tool_calls: list[dict] = []
+    file_ids: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
+    model_override: str | None = None
+    system_prompt: str | None = None
+    enable_knowledge_base: bool = True
+```
+
+```python
+# app/schemas/agent.py — agent endpoint schema; KB access via `search_knowledge_base` tool.
+class AgentExecuteRequest(BaseModel):
+    task_description: str
+    conversation_id: str | None = None
+    file_ids: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
+    model_override: str | None = None
+    system_prompt: str | None = None
+    max_steps: int = 10
 ```
 
 ### Tortoise ORM — `0.22+`
@@ -156,16 +167,15 @@ class ChatResponse(msgspec.Struct):
 
 | Library | Version | Purpose |
 |---|---|---|
-| `python-docx` | 1.1+ | Generate Word documents |
+| `python-docx` | 1.1+ | Generate Word documents + parse DOCX for KB |
 | `openpyxl` | 3.1+ | Generate/read Excel files |
 | `python-pptx` | 1.0+ | Generate PowerPoint presentations |
 | `uvicorn` | 0.30+ | ASGI server for FastAPI |
 | `aiosqlite` | 0.20+ | Async SQLite driver (Tortoise ORM backend) |
-| `aerich` | 0.7+ | Database migrations for Tortoise ORM |
 | `loguru` | 0.7+ | Structured logging |
 | `python-multipart` | 0.0.9+ | File upload handling in FastAPI |
-| `Pillow` | 10+ | Image processing (resize, format conversion) |
-| `PyMuPDF` (fitz) | 1.25+ | PDF text extraction (non-scanned PDFs) |
+| `psutil` | 5.9+ | Network connection enumeration for sovereignty proof |
+| `PyMuPDF` (fitz) | 1.25+ | PDF text extraction (text-based PDFs) |
 
 ## DevOps
 
@@ -263,7 +273,7 @@ kavach-ai/
 │   │   │   ├── embedder.py
 │   │   │   ├── retriever.py
 │   │   │   └── pipeline.py
-│   │   ├── schemas/           # msgspec Structs
+│   │   ├── schemas/           # Pydantic request bodies; msgspec for hot-path responses
 │   │   │   ├── chat.py
 │   │   │   ├── agent.py
 │   │   │   ├── files.py

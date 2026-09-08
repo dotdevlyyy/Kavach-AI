@@ -16,8 +16,6 @@ class Conversation(models.Model):
     updated_at = fields.DatetimeField(auto_now=True)
     model_override = fields.CharField(max_length=100, null=True)
     system_prompt = fields.TextField(null=True)
-    is_agent_mode = fields.BooleanField(default=False)
-    metadata = fields.JSONField(default=dict)
 
     # Reverse relations
     messages: fields.ReverseRelation["app.models.message.Message"]

@@ -1,26 +1,24 @@
-import os
-from pathlib import Path
+from app.core.paths import DATA_ROOT
 from app.tools.registry import register_tool
 
-DATA_DIR = Path("data").resolve() if Path("data").exists() else Path("backend/data").resolve()
 
 @register_tool("file_read")
 def file_read(filepath: str) -> str:
     """Read contents of a file from the data directory.
-    
+
     Args:
         filepath: Path to the file, relative to backend/data/
     """
-    target = (DATA_DIR / filepath).resolve()
-    if not str(target).startswith(str(DATA_DIR)):
+    target = (DATA_ROOT / filepath).resolve()
+    if not str(target).startswith(str(DATA_ROOT)):
         return "Error: Access denied. Cannot read outside of data directory."
-        
+
     if not target.exists():
         return f"Error: File {filepath} not found."
-        
+
     if not target.is_file():
         return f"Error: {filepath} is a directory."
-        
+
     try:
         with open(target, "r", encoding="utf-8") as f:
             return f.read()

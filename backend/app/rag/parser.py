@@ -1,4 +1,5 @@
 import os
+import csv
 import fitz  # PyMuPDF
 import docx
 
@@ -22,21 +23,30 @@ def parse_docx(file_path: str) -> str:
     text_content = [paragraph.text for paragraph in doc.paragraphs]
     return "\n".join(text_content)
 
+def parse_csv(file_path: str) -> str:
+    """Reads a CSV and returns it as pipe-separated rows (one chunk per row group)."""
+    with open(file_path, 'r', encoding='utf-8', newline='') as file:
+        reader = csv.reader(file)
+        rows = [", ".join(row) for row in reader]
+    return "\n".join(rows)
+
 def parse_document(file_path: str) -> str:
     """
     Master routing function to extract text from a file based on its extension.
-    Supported extensions: .txt, .md, .pdf, .docx
+    Supported extensions: .txt, .md, .pdf, .docx, .csv
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
     _, ext = os.path.splitext(file_path.lower())
-    
+
     if ext in ['.txt', '.md']:
         return parse_txt(file_path)
     elif ext == '.pdf':
         return parse_pdf(file_path)
     elif ext == '.docx':
         return parse_docx(file_path)
+    elif ext == '.csv':
+        return parse_csv(file_path)
     else:
         raise ValueError(f"Unsupported file type for parsing: {ext}")

@@ -5,7 +5,6 @@ Represents a single message within a conversation.
 
 import uuid
 from tortoise import fields, models
-from app.schemas.common import MessageRole
 
 
 class Message(models.Model):
@@ -15,12 +14,12 @@ class Message(models.Model):
     conversation = fields.ForeignKeyField(
         "models.Conversation", related_name="messages", on_delete=fields.CASCADE
     )
-    role = fields.CharEnumField(enum_type=MessageRole, max_length=20)
+    role = fields.CharField(max_length=20)
     content = fields.TextField()
     model_used = fields.CharField(max_length=100, null=True)
     task_type = fields.CharField(max_length=50, null=True)
-    tokens_in = fields.IntField(default=0)
-    tokens_out = fields.IntField(default=0)
+    tokens_in = fields.IntField(default=0)  # ponytail: word count, not tokens (V3-3)
+    tokens_out = fields.IntField(default=0)  # ponytail: word count, not tokens (V3-3)
     latency_ms = fields.IntField(default=0)
     files = fields.JSONField(default=list)
     created_at = fields.DatetimeField(auto_now_add=True)

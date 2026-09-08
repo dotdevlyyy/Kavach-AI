@@ -51,25 +51,22 @@ The RAG (Retrieval-Augmented Generation) pipeline allows the AI to ground its re
 import fitz  # PyMuPDF
 from pathlib import Path
 
-async def parse_document(file_path: str) -> str:
-    """Extract text from various document formats."""
+def parse_document(file_path: str) -> str:
+    """Extract text from various document formats. Raises ValueError on unsupported types."""
     
     path = Path(file_path)
     ext = path.suffix.lower()
-    
-    if ext == ".pdf":
+
+    if ext in {".txt", ".md"}:
+        return path.read_text(encoding="utf-8")
+    elif ext == ".pdf":
         return _parse_pdf(file_path)
-    elif ext == ".txt":
-        return path.read_text(encoding="utf-8")
-    elif ext == ".md":
-        return path.read_text(encoding="utf-8")
     elif ext == ".docx":
         return _parse_docx(file_path)
-    elif ext in {".png", ".jpg", ".jpeg", ".webp", ".tiff"}:
-        # For images, use Qwen2.5-VL for OCR
-        return None  # Handled separately by OCR tool
+    elif ext == ".csv":
+        return _parse_csv(file_path)
     else:
-        return f"Unsupported format: {ext}"
+        raise ValueError(f"Unsupported file type for parsing: {ext}")
 
 def _parse_pdf(file_path: str) -> str:
     """Extract text from PDF using PyMuPDF."""
@@ -102,16 +99,15 @@ def chunk_text(
     chunk_size: int = 512,
     chunk_overlap: int = 50,
     separator: str = "\n\n",
-) -> list[dict]:
-    """Split text into overlapping chunks for embedding."""
-    
+) -> list[str]:
+    """Split text into overlapping chunks for embedding. Returns plain strings."""
+
     # First split by separator (paragraphs)
     paragraphs = text.split(separator)
-    
+
     chunks = []
     current_chunk = ""
-    chunk_index = 0
-    
+
     for para in paragraphs:
         # If adding this paragraph would exceed chunk_size
         if len(current_chunk) + len(para) > chunk_size and current_chunk:
@@ -131,12 +127,8 @@ def chunk_text(
     
     # Add remaining text
     if current_chunk.strip():
-        chunks.append({
-            "index": chunk_index,
-            "content": current_chunk.strip(),
-            "char_count": len(current_chunk.strip()),
-        })
-    
+        chunks.append(current_chunk.strip())
+
     return chunks
 ```
 
@@ -188,48 +180,27 @@ def deserialize_embedding(blob: bytes, dim: int = 2048) -> list[float]:
 # app/rag/pipeline.py
 from app.rag.parser import parse_document
 from app.rag.chunker import chunk_text
-from app.rag.embedder import embed_text
+from app.rag.embedder import generate_embedding
 from app.models.document import Document
 from app.models.knowledge_chunk import KnowledgeChunk
 
-async def ingest_document(file_path: str, original_name: str, ollama_client) -> str:
-    """Full ingestion pipeline: parse → chunk → embed → store."""
-    
-    # 1. Parse
-    text = await parse_document(file_path)
-    if text is None:
-        return "Document requires OCR (scanned). Use vision model for extraction."
-    
-    # 2. Create document record
-    doc = await Document.create(
-        filename=Path(file_path).name,
-        original_name=original_name,
-        file_path=file_path,
-        file_type=Path(file_path).suffix[1:],
-        file_size=Path(file_path).stat().st_size,
-        mime_type="application/pdf",
-        is_knowledge_base=True,
-    )
-    
-    # 3. Chunk
-    chunks = chunk_text(text, chunk_size=512, chunk_overlap=50)
-    
-    # 4. Embed and store
-    for chunk_data in chunks:
-        embedding_blob = await embed_text(ollama_client, chunk_data["content"])
-        
+async def ingest_document(document_id: str, text_chunks: list[str]) -> int:
+    """Embed pre-chunked text and store as KnowledgeChunk rows. Caller chunks."""
+    document = await Document.get_or_none(id=document_id)
+    if not document:
+        return 0
+    for i, chunk in enumerate(text_chunks):
+        embedding = await generate_embedding(chunk)
         await KnowledgeChunk.create(
-            document=doc,
-            chunk_index=chunk_data["index"],
-            content=chunk_data["content"],
-            embedding=embedding_blob,
-            metadata={"char_count": chunk_data["char_count"]},
+            document=document, content=chunk, chunk_index=i, embedding=serialize_embedding(embedding) if embedding else None,
         )
-    
-    # 5. Update FTS5 index (happens automatically via trigger)
-    
-    return f"Indexed {len(chunks)} chunks from '{original_name}'"
+        # FTS5 row inserted explicitly here
+    document.is_knowledge_base = True
+    await document.save()
+    return len(text_chunks)
 ```
+
+The HTTP entry point (`POST /api/knowledge/index`) does parsing + chunking, creates the `Document` row, then calls `ingest_document(document_id, chunks)` for embedding + storage. FTS5 rows are inserted explicitly inside `ingest_document` (no triggers).
 
 ## Retrieval Pipeline
 
@@ -315,50 +286,24 @@ async def hybrid_search(
             "document_name": chunk.document.original_name,
             "content": chunk.content,
             "score": score,
-            "metadata": chunk.metadata,
         })
-    
-    return results
 
-def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+    return results
 ```
+
+Cosine similarity is computed inline in `search_vector` (`app/rag/retriever.py:53-86`), not as a separate helper. The brute-force scan is capped at 200 chunks per query — `ponytail:` upgrade to sqlite-vss when the chunk count grows past that ceiling.
 
 ### RAG Prompt Construction
 
-```python
-# app/rag/prompt.py
+KB context is injected into `POST /api/chat` directly when `enable_knowledge_base=true`: `hybrid_search(query, limit=3)` runs, and the top-3 hits are prepended as a `system` message in the format:
 
-RAG_SYSTEM_PROMPT = """You are Kavach AI, a sovereign on-premise AI assistant for industrial organizations.
-
-You have access to the organization's knowledge base. Use the following context from internal documents to answer the user's question. Always cite the source document when using information from the context.
-
-If the context doesn't contain relevant information, say so honestly. Do not make up information.
-
---- CONTEXT FROM KNOWLEDGE BASE ---
-{context}
---- END CONTEXT ---
-
-Answer the user's question based on the above context and your general knowledge."""
-
-def build_rag_prompt(query: str, search_results: list[dict]) -> str:
-    """Build the RAG prompt with retrieved context."""
-    
-    context_parts = []
-    for i, result in enumerate(search_results, 1):
-        context_parts.append(
-            f"[Source {i}: {result['document_name']}]\n{result['content']}"
-        )
-    
-    context = "\n\n".join(context_parts)
-    return RAG_SYSTEM_PROMPT.format(context=context)
 ```
+Knowledge base context:
+[<document_name>] <chunk_content[:400]>
+...
+```
+
+There is no separate `app/rag/prompt.py` module. The agent loop's planner can also call the `search_knowledge_base` tool for ad-hoc RAG.
 
 ## Knowledge Base Management
 
@@ -415,3 +360,5 @@ def build_rag_prompt(query: str, search_results: list[dict]) -> str:
 | Semantic search (1000 chunks) | < 100ms | In-memory cosine similarity |
 | Hybrid search (full pipeline) | < 500ms | FTS5 + semantic + RRF |
 | Full ingestion (10-page PDF) | ~5-10s | Parse + chunk + embed |
+
+> **Vector search ceiling (ponytail):** `app/rag/retriever.py:search_vector` is a brute-force scan capped at 200 embedded chunks per query. Fine for a single org's KB; switch to `sqlite-vss` (or any real vector store) when the KB grows past ~200 chunks with embeddings.

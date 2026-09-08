@@ -31,23 +31,15 @@ OLLAMA_MAX_LOADED_MODELS=2
 **Impact:** Critical — no AI responses
 
 **Mitigations:**
-1. Health check endpoint polls Ollama every 30 seconds
-2. Auto-restart logic via subprocess monitor
-3. Pre-warmed responses cached for demo queries
-4. Backup plan: restart Ollama manually, takes ~20 seconds to re-warm models
+1. Health check endpoint reports Ollama availability (`GET /api/health`)
+2. Pre-warmed models loaded at startup via `preload_models()` with `keep_alive=-1` (no auto-restart of the Ollama process itself)
+3. Backup plan: restart Ollama manually, takes ~20 seconds to re-warm models
 
 ```python
-# Backend health check with auto-recovery
-async def check_ollama_health():
-    try:
-        await ollama_client.list()
-        return True
-    except Exception:
-        logger.error("Ollama is down! Attempting restart...")
-        subprocess.Popen(["ollama", "serve"])
-        await asyncio.sleep(5)
-        # Re-warm models
-        await preload_models()
+# app/core/ollama_client.py — startup preload
+async def preload_models(self):
+    for model in settings.models:
+        await self.client.chat(model=model, messages=[...], keep_alive=-1)
 ```
 
 ---
@@ -58,11 +50,11 @@ async def check_ollama_health():
 **Impact:** Medium — one task fails, but system remains responsive
 
 **Mitigations:**
-1. **Hard limit:** `max_steps=10` per agent task (configurable)
-2. **Per-step timeout:** Each LLM call has a 60-second timeout
-3. **Per-task timeout:** Entire agent task limited to 5 minutes
+1. **Hard limit:** `max_steps=10` per agent task (configurable via `AgentExecuteRequest.max_steps`)
+2. **Per-step timeout:** Each LLM call wrapped in `asyncio.wait_for(..., timeout=PER_STEP_SECONDS)` — 60s
+3. **Per-task timeout:** Entire agent task limited to 5 minutes — hardcoded `PER_TASK_SECONDS = 300` in `app/agent/loop.py` (no config knob; if the value needs to change, edit the constant and redeploy)
 4. **Graceful degradation:** If max steps reached, return partial results with explanation
-5. **Cancel button:** Frontend can POST `/api/agent/tasks/{id}/cancel` to abort
+5. **Cancel button:** Frontend can POST `/api/agent/tasks/{id}/cancel` to set the cancel event; the loop's final write is authoritative for `task.status`
 
 ---
 
@@ -97,9 +89,8 @@ async def check_ollama_health():
 
 **Mitigations:**
 1. **Curated sample PDFs:** Use high-quality scanned samples, not blurry phone photos
-2. **Preprocessing:** Resize images to optimal resolution for Qwen2.5-VL (1024x1024)
-3. **Fallback:** If OCR on scanned PDF fails, use PyMuPDF for text-based PDFs instead
-4. **Page-by-page processing:** Process one page at a time to avoid context window limits
+2. **Fallback:** If OCR on scanned PDF fails, use PyMuPDF for text-based PDFs instead
+3. **Page-by-page processing:** Process one page at a time to avoid context window limits
 
 ---
 
@@ -201,8 +192,8 @@ netsh advfirewall firewall add rule name="Allow Localhost" dir=out action=allow 
 | User types in Hindi/regional language | Llama 3.2 has basic Hindi support. Response may be mixed Hindi-English. Known limitation. |
 | Empty message sent | Return 400: "Message cannot be empty" |
 | Agent tool throws exception | Catch, log, return tool error to agent. Agent can retry or skip. |
-| Code sandbox runs dangerous code (rm -rf) | Sandbox runs in tmpdir, no access to main filesystem. Timeout: 30s. |
-| SQLite database gets corrupted | Auto-backup every 6 hours. Manual `PRAGMA integrity_check` on startup. |
+| Code sandbox runs dangerous code (rm -rf) | Sandbox runs in `TemporaryDirectory` with empty `env`, no access to main filesystem. 512 MB address-space cap via POSIX `RLIMIT_AS`. Per-call timeout: 30s. |
+| SQLite database gets corrupted | WAL mode + 6-hour backups. Startup runs `PRAGMA journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON` (`app/core/database.py:38-47`). No `PRAGMA integrity_check` — restart from backup if corruption detected. |
 | Ollama model download interrupted | Retry logic in preloading. Ollama supports resumable downloads. |
 | Browser refresh during streaming | Frontend re-fetches conversation from DB. Stream is lost but history preserved. |
 | Two browser tabs sending messages simultaneously | SQLite WAL mode handles concurrent reads. Writes are serialized but fast. |

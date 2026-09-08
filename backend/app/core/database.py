@@ -3,13 +3,9 @@ Kavach AI — Database Configuration
 Tortoise ORM with SQLite + WAL mode + FTS5 full-text search.
 """
 
-import os
 from loguru import logger
 from app.core.config import settings
-
-
-# Ensure data directory exists
-os.makedirs(os.path.dirname(settings.db_path), exist_ok=True)
+from app.core.paths import DATA_ROOT  # noqa: F401 — imported for mkdir side-effect
 
 TORTOISE_ORM = {
     "connections": {
@@ -52,12 +48,13 @@ async def init_sqlite_pragmas():
 
 
 async def init_fts5():
-    """Create FTS5 virtual table for knowledge base full-text search."""
+    """Create the FTS5 virtual table. Index rows are populated explicitly by
+    pipeline.ingest_document and api/knowledge.delete_document so we don't depend
+    on triggers coupling schema to Python."""
     from tortoise import Tortoise
 
     conn = Tortoise.get_connection("default")
 
-    # Create FTS5 virtual table
     await conn.execute_query("""
         CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
             chunk_id,
@@ -67,31 +64,12 @@ async def init_fts5():
         );
     """)
 
-    # Trigger to keep FTS5 in sync on insert
-    await conn.execute_query("""
-        CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ai AFTER INSERT ON knowledge_chunks
-        BEGIN
-            INSERT INTO knowledge_fts(chunk_id, content, document_name)
-            VALUES (
-                NEW.id,
-                NEW.content,
-                (SELECT original_name FROM documents WHERE id = NEW.document_id)
-            );
-        END;
-    """)
-
-    # Trigger for delete sync
-    await conn.execute_query("""
-        CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ad AFTER DELETE ON knowledge_chunks
-        BEGIN
-            DELETE FROM knowledge_fts WHERE chunk_id = OLD.id;
-        END;
-    """)
-
-    logger.info("✅ FTS5 virtual table and sync triggers created")
+    logger.info("✅ FTS5 virtual table created (populated explicitly by pipeline)")
 
 async def init_db():
     from tortoise import Tortoise
+    # ponytail: kept for sync TestClient fixtures (tests/test_integration.py).
+    # Drop once tests move to httpx.AsyncClient — silent typo-swallowing is otherwise risky.
     await Tortoise.init(config=TORTOISE_ORM, _enable_global_fallback=True)
     await Tortoise.generate_schemas()
     await init_sqlite_pragmas()

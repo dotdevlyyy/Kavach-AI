@@ -79,10 +79,6 @@ class OllamaManager:
 
         return loaded
 
-    async def preload_all_models(self) -> list[str]:
-        """Alias for preload_models to preload all configured models."""
-        return await self.preload_models()
-
     async def chat(
         self,
         model: str,
@@ -171,26 +167,6 @@ class OllamaManager:
             logger.error(f"Failed to get running models: {e}")
             return []
 
-    async def list_models(self) -> list[dict]:
-        """Get list of all available (downloaded) models.
-
-        Returns:
-            List of dicts with model metadata
-        """
-        try:
-            response = await self.client.list()
-            return [
-                {
-                    "name": m.model,
-                    "size": m.size,
-                    "modified_at": str(m.modified_at) if m.modified_at else None,
-                }
-                for m in response.models
-            ] if response.models else []
-        except Exception as e:
-            logger.error(f"Failed to list models: {e}")
-            return []
-
     async def is_healthy(self) -> tuple[bool, int]:
         """Check if Ollama server is reachable.
 
@@ -208,10 +184,6 @@ class OllamaManager:
             latency = int((time.monotonic() - start) * 1000)
             return False, latency
 
-    @property
-    def preloaded_models(self) -> set[str]:
-        """Set of model names that were successfully preloaded."""
-        return self._preloaded.copy()
 
 # Singleton instance
 ollama_client = OllamaManager()

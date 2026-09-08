@@ -12,7 +12,7 @@ Routing Table:
 from __future__ import annotations
 
 from app.schemas.common import TaskType, RoutingMetadata
-from app.router.classifier import classify_task, build_routing_metadata
+from app.router.classifier import classify_task
 
 
 # ─── Routing Table ────────────────────────────────────────────────────────
@@ -66,27 +66,11 @@ MODEL_INFO: dict[str, dict] = {
 }
 
 
-def get_model_for_task(task_type: TaskType) -> str:
-    """Return the model name for a given task type.
-
-    Args:
-        task_type: The classified task type
-
-    Returns:
-        Model name string (e.g., "llama3.2:1b")
-    """
-    return ROUTING_TABLE.get(task_type, "llama3.2:1b")
-
-
-def get_all_models() -> list[str]:
-    """Return all unique model names in the routing table."""
-    return list(set(ROUTING_TABLE.values()))
-
-
-def route_request(
+async def route_request(
     message: str,
     has_images: bool = False,
     has_pdfs: bool = False,
+    file_ids: list[str] | None = None,
     file_types: list[str] | None = None,
     model_override: str | None = None,
 ) -> tuple[str, RoutingMetadata]:
@@ -94,17 +78,14 @@ def route_request(
 
     If model_override is provided, bypasses classification and uses the
     specified model directly (useful for power users or testing).
-
-    Args:
-        message: User message text
-        has_images: Whether image files are attached
-        has_pdfs: Whether PDF files are attached
-        file_types: List of file extensions
-        model_override: Force a specific model (bypass router)
-
-    Returns:
-        Tuple of (model_name, RoutingMetadata)
     """
+    # Step 0: If file_ids given, resolve to has_images / has_pdfs in one query.
+    if file_ids:
+        from app.models.file_upload import FileUpload
+        uploads = await FileUpload.filter(id__in=file_ids)
+        has_images = has_images or any(u.file_type == "image" for u in uploads)
+        has_pdfs = has_pdfs or any(u.file_type == "pdf" for u in uploads)
+
     # Step 1: Classify the task
     task_type, confidence, reasoning = classify_task(
         message=message,
@@ -119,13 +100,12 @@ def route_request(
         reasoning = f"User override: {model_override} (original classification: {task_type.value})"
         confidence = 1.0
     else:
-        model = get_model_for_task(task_type)
+        model = ROUTING_TABLE.get(task_type, "llama3.2:1b")
 
-    # Step 3: Build metadata
-    metadata = build_routing_metadata(
-        task_type=task_type,
-        model_selected=model,
-        confidence=confidence,
+    # Step 3: Build metadata inline (single caller)
+    metadata = RoutingMetadata(
+        task_type=task_type.value,
+        confidence=round(confidence, 2),
         reasoning=reasoning,
     )
 

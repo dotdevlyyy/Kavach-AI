@@ -19,7 +19,6 @@ class AgentTask(models.Model):
     status = fields.CharEnumField(
         enum_type=AgentTaskStatus, max_length=20, default=AgentTaskStatus.PLANNING
     )
-    plan = fields.JSONField(default=list)
     result_summary = fields.TextField(null=True)
     output_files = fields.JSONField(default=list)
     total_steps = fields.IntField(default=0)

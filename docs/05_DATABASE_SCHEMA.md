@@ -2,7 +2,7 @@
 
 > **ORM:** Tortoise ORM with SQLite + FTS5
 > **Schema Definitions:** Tortoise Model classes
-> **Migrations:** Aerich
+> **Migrations:** none — `Tortoise.generate_schemas()` runs at startup (drop the DB file to reset)
 
 ## Entity Relationship Diagram
 
@@ -16,9 +16,9 @@
 │  updated_at       │      │        system/tool)      │
 │  model_override   │      │  content                 │
 │  system_prompt    │      │  model_used              │
-│  is_agent_mode    │      │  task_type               │
-│  metadata (JSON)  │      │  tokens_in               │
-└─────────────────┘      │  tokens_out              │
+└─────────────────┘      │  task_type               │
+└─────────────────┘      │  tokens_in               │
+                          │  tokens_out              │
                           │  latency_ms              │
                           │  files (JSON)            │
                           │  created_at              │
@@ -47,13 +47,12 @@
 │  conversation_id (FK)    │   │  │  agent_task_id (FK)      │
 │  description             │   └──│  step_number             │
 │  status (enum)           │      │  type (plan/act/observe/ │
-│  plan (JSON)             │      │        reflect)          │
-│  result_summary          │      │  content                 │
-│  output_files (JSON)     │      │  tool_calls (JSON)       │
+│  result_summary          │      │        reflect)          │
+│  output_files (JSON)     │      │  content                 │
 │  total_steps             │      │  model_used              │
-│  max_steps               │      │  tokens_used             │
-│  created_at              │      │  duration_ms             │
-│  completed_at            │      │  created_at              │
+│  max_steps               │      │  duration_ms             │
+│  created_at              │      │  created_at              │
+│  completed_at            │      └─────────────────────────┘
 └─────────────────────────┘      └─────────────────────────┘
 
 ┌─────────────────────────┐       ┌─────────────────────────┐
@@ -67,10 +66,9 @@
 │  file_size               │      │  metadata (JSON)         │
 │  mime_type               │      │  created_at              │
 │  is_knowledge_base       │      └─────────────────────────┘
-│  ocr_text (TEXT)         │
-│  metadata (JSON)         │      ┌─────────────────────────┐
-│  created_at              │      │  NetworkLog              │
-└─────────────────────────┘      │─────────────────────────│
+│  created_at              │      ┌─────────────────────────┐
+└─────────────────────────┘      │  NetworkLog              │
+                                  │─────────────────────────│
                                   │  id (INT, PK, auto)      │
 ┌─────────────────────────┐      │  timestamp               │
 │  FileUpload              │      │  local_addr              │
@@ -100,9 +98,7 @@ class Conversation(models.Model):
     updated_at = fields.DatetimeField(auto_now=True)
     model_override = fields.CharField(max_length=100, null=True)  # Force specific model
     system_prompt = fields.TextField(null=True)
-    is_agent_mode = fields.BooleanField(default=False)
-    metadata = fields.JSONField(default=dict)
-    
+
     messages: fields.ReverseRelation["Message"]
     agent_tasks: fields.ReverseRelation["AgentTask"]
     
@@ -119,10 +115,7 @@ class Message(models.Model):
     conversation = fields.ForeignKeyField(
         "models.Conversation", related_name="messages", on_delete=fields.CASCADE
     )
-    role = fields.CharEnumField(
-        enum_type=MessageRole,  # "user", "assistant", "system", "tool"
-        max_length=20
-    )
+    role = fields.CharField(max_length=20)  # free-form string: "user" | "assistant" | "system" | "tool"
     content = fields.TextField()
     model_used = fields.CharField(max_length=100, null=True)
     task_type = fields.CharField(max_length=50, null=True)  # "general_chat", "code", "vision"
@@ -145,7 +138,7 @@ class Message(models.Model):
 class ToolCall(models.Model):
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     message = fields.ForeignKeyField(
-        "models.Message", related_name="tool_calls", on_delete=fields.CASCADE
+        "models.Message", related_name="tool_calls", on_delete=fields.SET_NULL, null=True
     )
     agent_task = fields.ForeignKeyField(
         "models.AgentTask", related_name="tool_calls",
@@ -179,7 +172,6 @@ class AgentTask(models.Model):
         enum_type=AgentTaskStatus,  # "planning", "executing", "completed", "failed", "cancelled"
         max_length=20, default="planning"
     )
-    plan = fields.JSONField(default=list)  # List of planned steps
     result_summary = fields.TextField(null=True)
     output_files = fields.JSONField(default=list)  # List of generated file paths
     total_steps = fields.IntField(default=0)
@@ -208,9 +200,7 @@ class AgentStep(models.Model):
         max_length=20
     )
     content = fields.TextField()  # LLM reasoning / observation text
-    tool_calls = fields.JSONField(default=list)  # Tool calls made in this step
     model_used = fields.CharField(max_length=100, null=True)
-    tokens_used = fields.IntField(default=0)
     duration_ms = fields.IntField(default=0)
     created_at = fields.DatetimeField(auto_now_add=True)
     
@@ -231,8 +221,6 @@ class Document(models.Model):
     file_size = fields.IntField()  # Bytes
     mime_type = fields.CharField(max_length=200)
     is_knowledge_base = fields.BooleanField(default=False)  # Part of KB?
-    ocr_text = fields.TextField(null=True)  # Extracted text (for scanned docs)
-    metadata = fields.JSONField(default=dict)
     created_at = fields.DatetimeField(auto_now_add=True)
     
     chunks: fields.ReverseRelation["KnowledgeChunk"]
@@ -253,7 +241,6 @@ class KnowledgeChunk(models.Model):
     chunk_index = fields.IntField()
     content = fields.TextField()  # The chunk text
     embedding = fields.BinaryField(null=True)  # Serialized float32 array
-    metadata = fields.JSONField(default=dict)  # Page number, section, etc.
     created_at = fields.DatetimeField(auto_now_add=True)
     
     class Meta:
@@ -291,25 +278,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
     document_name,
     tokenize='porter unicode61'
 );
-
--- Trigger to keep FTS5 in sync with knowledge_chunks
-CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ai AFTER INSERT ON knowledge_chunks
-BEGIN
-    INSERT INTO knowledge_fts(chunk_id, content, document_name)
-    VALUES (NEW.id, NEW.content, (SELECT original_name FROM documents WHERE id = NEW.document_id));
-END;
 ```
+
+Rows are populated explicitly by `app/rag/pipeline.py:ingest_document` and removed explicitly by `app/api/knowledge.py:delete_document`. No triggers — schema and Python code stay decoupled.
 
 ## Enums
 
 ```python
 import enum
-
-class MessageRole(str, enum.Enum):
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-    TOOL = "tool"
 
 class TaskType(str, enum.Enum):
     GENERAL_CHAT = "general_chat"
@@ -344,6 +320,8 @@ class StepType(str, enum.Enum):
     REFLECT = "reflect"
 ```
 
+`Message.role` is a free-form `CharField` (no enum); tool status / task status / step type are all `CharEnumField`.
+
 ## Tortoise ORM Configuration
 
 ```python
@@ -368,8 +346,8 @@ TORTOISE_ORM = {
                 "app.models.agent_step",
                 "app.models.document",
                 "app.models.knowledge_chunk",
+                "app.models.file_upload",
                 "app.models.network_log",
-                "aerich.models",
             ],
             "default_connection": "default",
         },

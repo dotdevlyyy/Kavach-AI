@@ -13,7 +13,7 @@ class ToolCall(models.Model):
 
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     message = fields.ForeignKeyField(
-        "models.Message", related_name="tool_calls", on_delete=fields.CASCADE
+        "models.Message", related_name="tool_calls", on_delete=fields.SET_NULL, null=True
     )
     agent_task = fields.ForeignKeyField(
         "models.AgentTask",

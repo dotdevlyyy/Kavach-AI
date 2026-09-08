@@ -3,6 +3,7 @@ Kavach AI — FastAPI Application Entrypoint
 Mounts CORS, lifecycle hooks (Ollama pre-loading, Tortoise ORM), and API routers.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,8 @@ from app.api.agent import router as agent_router
 from app.api.files import router as files_router
 from app.api.network import router as network_router
 from app.api.health import router as health_router
+from app.api.knowledge import router as knowledge_router
+from app.api.models import router as models_router
 
 
 @asynccontextmanager
@@ -32,9 +35,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Ollama preloading warning (server may be offline): {e}")
 
+    # Start periodic network snapshotter so /api/network/logs shows history.
+    # ponytail: 30s tick keeps DB growth bounded; tighten to 10s if demo needs finer grain.
+    snapshot_task = None
+    try:
+        from app.api.network import _periodic_snapshotter
+        snapshot_task = asyncio.create_task(_periodic_snapshotter(interval_seconds=30))
+    except Exception as e:
+        logger.warning(f"Network snapshotter failed to start: {e}")
+
     yield
 
     # Shutdown logic
+    if snapshot_task:
+        snapshot_task.cancel()
+        try:
+            await snapshot_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down Kavach AI Backend...")
     await close_db()
 
@@ -50,7 +68,6 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,56 +79,11 @@ app.include_router(agent_router)
 app.include_router(files_router)
 app.include_router(network_router)
 app.include_router(health_router)
-
-
-@app.get("/")
-async def root():
-    """Health check root endpoint."""
-    return {
-        "app": settings.APP_NAME,
-        "version": settings.app_version,
-        "status": "online",
-        "air_gapped": True
-    }
-
-
-
-
-    """System, Database, and Ollama health check endpoint."""
-    ollama_ok, latency = await ollama_client.is_healthy()
-
-    db_status = "connected"
-    try:
-        from tortoise import Tortoise
-        if Tortoise._inited and "default" in Tortoise._connections:
-            conn = Tortoise.get_connection("default")
-            await conn.execute_query("SELECT 1;")
-        else:
-            db_status = "ready"
-    except Exception:
-        db_status = "ready"
-
-    db_ok = (db_status in ("connected", "ready"))
-    is_healthy = (ollama_ok and db_ok)
-    is_degraded = (db_ok and not ollama_ok)
-
-    return {
-        "status": "healthy" if is_healthy else ("degraded" if is_degraded else "unhealthy"),
-        "app": settings.APP_NAME,
-        "version": settings.app_version,
-        "air_gapped": True,
-        "ollama": {
-            "status": "connected" if ollama_ok else "unreachable",
-            "host": settings.ollama_host,
-            "latency_ms": latency
-        },
-        "database": {
-            "status": "connected" if db_ok else "disconnected",
-            "path": settings.db_path
-        }
-    }
+app.include_router(knowledge_router)
+app.include_router(models_router)
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)

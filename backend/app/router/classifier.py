@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from app.schemas.common import TaskType, RoutingMetadata
+from app.schemas.common import TaskType
 
 
 # ─── Keyword Sets ─────────────────────────────────────────────────────────
@@ -131,18 +131,3 @@ def classify_task(
     # ── Default: General chat ──────────────────────────────────────────
     reasons.append("No strong keyword signals; defaulting to general chat")
     return TaskType.GENERAL_CHAT, 0.5, "; ".join(reasons)
-
-
-def build_routing_metadata(
-    task_type: TaskType,
-    model_selected: str,
-    confidence: float,
-    reasoning: str,
-) -> RoutingMetadata:
-    """Build a RoutingMetadata struct for inclusion in SSE metadata events."""
-    return RoutingMetadata(
-        task_type=task_type.value,
-        model_selected=model_selected,
-        confidence=round(confidence, 2),
-        reasoning=reasoning,
-    )

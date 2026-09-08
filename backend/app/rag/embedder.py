@@ -3,8 +3,9 @@ Kavach AI — Embedding Generator
 Uses Ollama's embed API to generate vector embeddings for RAG chunks.
 """
 
-import struct
+import array
 from loguru import logger
+from app.core.config import settings
 from app.core.ollama_client import ollama_client
 
 
@@ -18,7 +19,7 @@ async def generate_embedding(text: str) -> list[float]:
         List of floats representing the embedding vector. Empty list on error.
     """
     try:
-        return await ollama_client.embed(model="llama3.2:1b", text=text)
+        return await ollama_client.embed(model=settings.embed_model, text=text)
     except Exception as e:
         logger.error(f"Embedding generation error: {e}")
         return []
@@ -26,10 +27,9 @@ async def generate_embedding(text: str) -> list[float]:
 
 def serialize_embedding(embedding: list[float]) -> bytes:
     """Serialize a float32 embedding vector to bytes for DB storage."""
-    return struct.pack(f"{len(embedding)}f", *embedding)
+    return array.array("f", embedding).tobytes()
 
 
 def deserialize_embedding(data: bytes) -> list[float]:
     """Deserialize bytes back to a float32 embedding vector."""
-    count = len(data) // 4
-    return list(struct.unpack(f"{count}f", data))
+    return list(array.array("f", data))

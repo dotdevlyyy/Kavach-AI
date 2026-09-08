@@ -18,8 +18,6 @@ class Document(models.Model):
     file_size = fields.IntField()
     mime_type = fields.CharField(max_length=200)
     is_knowledge_base = fields.BooleanField(default=False)
-    ocr_text = fields.TextField(null=True)
-    metadata = fields.JSONField(default=dict)
     created_at = fields.DatetimeField(auto_now_add=True)
 
     # Reverse relations

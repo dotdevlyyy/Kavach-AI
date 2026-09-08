@@ -148,14 +148,18 @@ ROUTING_TABLE = {
 - `observer.py` — Checks tool output, decides next action
 - `loop.py` — Main ReAct loop (Plan → Act → Observe → Reflect)
 
-#### Tool Registry (`app/tools/`)
-- `file_read.py` — Read files from workspace
-- `file_write.py` — Write files to workspace
-- `code_execute.py` — Sandboxed Python execution (subprocess + tempdir)
-- `doc_generate.py` — Generate DOCX/XLSX/PPTX via python-docx/openpyxl/python-pptx
-- `knowledge_search.py` — Search local knowledge base (SQLite FTS5)
-- `ocr_extract.py` — Extract text from images via Qwen2.5-VL
-- `image_analyze.py` — Analyze images/drawings via Qwen2.5-VL
+#### Tool Registry (`app/tools/` + `app/rag/`)
+The planner emits these canonical names; aliases were removed.
+
+- `file_read` — Read files from workspace
+- `file_write` — Write files to workspace
+- `code_execute` — Sandboxed Python execution (subprocess + tempdir)
+- `generate_word_document` — DOCX via `python-docx`
+- `generate_excel_sheet` — XLSX via `openpyxl`
+- `generate_presentation` — PPTX via `python-pptx`
+- `search_knowledge_base` — Hybrid FTS5 + vector search via SQLite (RRF merge)
+- `extract_text_from_image` — OCR pass on an attached image via Qwen2.5-VL
+- `analyze_engineering_diagram` — P&ID / drawing interpretation via Qwen2.5-VL
 
 #### RAG Pipeline (`app/rag/`)
 - `chunker.py` — Document chunking (recursive text splitter)
@@ -164,8 +168,9 @@ ROUTING_TABLE = {
 - `pipeline.py` — Orchestrates chunk → embed → store → retrieve → generate
 
 #### Schemas (`app/schemas/`)
-- All request/response schemas defined as **msgspec Structs** (not Pydantic)
-- Custom FastAPI integration for msgspec validation
+- **Request bodies** use Pydantic `BaseModel` (FastAPI wires validation natively)
+- **Response payloads** use plain dicts; the hot-path file-metadata responses use `msgspec.json.encode` inside `app/api/files.py:_msgspec_response` for ~10x faster serialization
+- See `docs/04_TECH_STACK.md` for the rationale
 
 ### 3. Data Layer (Tortoise ORM + SQLite)
 

@@ -10,14 +10,6 @@ import msgspec
 # ─── Enums ────────────────────────────────────────────────────────────────
 
 
-class MessageRole(str, enum.Enum):
-    """Role of a message in a conversation."""
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-    TOOL = "tool"
-
-
 class TaskType(str, enum.Enum):
     """Types of tasks the model router can classify."""
     GENERAL_CHAT = "general_chat"
@@ -64,21 +56,6 @@ class StepType(str, enum.Enum):
 class RoutingMetadata(msgspec.Struct):
     """Metadata about model routing decision, sent to frontend."""
     task_type: str
-    model_selected: str
     confidence: float
     reasoning: str
 
-
-class ErrorResponse(msgspec.Struct):
-    """Standard error response."""
-    error: str
-    detail: str | None = None
-    status_code: int = 500
-    request_id: str | None = None
-
-
-class ServiceStatus(msgspec.Struct):
-    """Status of an individual service (Ollama, DB, etc.)."""
-    status: str  # "up" | "down"
-    latency_ms: int
-    details: str | None = None

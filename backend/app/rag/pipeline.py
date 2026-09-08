@@ -1,12 +1,22 @@
 """
 Kavach AI — RAG Ingestion Pipeline
-Ingests parsed document text chunks into the DB with embeddings.
+Ingests parsed document text chunks into the DB with embeddings, plus FTS5 index.
 """
 
 from loguru import logger
+from tortoise import Tortoise
 from app.rag.embedder import generate_embedding, serialize_embedding
 from app.models.document import Document
 from app.models.knowledge_chunk import KnowledgeChunk
+
+
+async def _index_chunk_in_fts(chunk_id: str, content: str, document_name: str) -> None:
+    """Populate the FTS5 virtual table explicitly (no triggers)."""
+    conn = Tortoise.get_connection("default")
+    await conn.execute_query(
+        "INSERT INTO knowledge_fts(chunk_id, content, document_name) VALUES (?, ?, ?)",
+        [chunk_id, content, document_name],
+    )
 
 
 async def ingest_document(document_id: str, text_chunks: list[str]) -> int:
@@ -25,16 +35,19 @@ async def ingest_document(document_id: str, text_chunks: list[str]) -> int:
         return 0
 
     ingested = 0
-    for i, chunk_text in enumerate(text_chunks):
+    for i, chunk in enumerate(text_chunks):
         try:
-            embedding = await generate_embedding(chunk_text)
+            embedding = await generate_embedding(chunk)
             embedding_bytes = serialize_embedding(embedding) if embedding else None
 
-            await KnowledgeChunk.create(
+            new_chunk = await KnowledgeChunk.create(
                 document=document,
-                content=chunk_text,
+                content=chunk,
                 chunk_index=i,
                 embedding=embedding_bytes,
+            )
+            await _index_chunk_in_fts(
+                str(new_chunk.id), chunk, document.original_name
             )
             ingested += 1
         except Exception as e:
@@ -46,3 +59,4 @@ async def ingest_document(document_id: str, text_chunks: list[str]) -> int:
 
     logger.info(f"Ingested {ingested}/{len(text_chunks)} chunks for document {document_id}")
     return ingested
+

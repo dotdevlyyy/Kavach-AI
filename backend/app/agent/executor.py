@@ -3,6 +3,7 @@ Kavach AI — ReAct Agent Executor
 Dispatches individual step execution requests to the Tool Registry.
 """
 
+import inspect
 from typing import Dict, Any
 from loguru import logger
 from app.tools.registry import execute_tool, _TOOL_REGISTRY
@@ -16,13 +17,58 @@ import app.tools.ocr_extract     # noqa: F401
 import app.tools.image_analyze   # noqa: F401
 import app.rag.knowledge_search  # noqa: F401
 
-# Map planner conceptual tool names to registry tool names
-TOOL_ALIASES = {
-    "knowledge_search": "search_knowledge_base",
-    "doc_generate": "generate_word_document",
-    "ocr_extract": "extract_text_from_image",
-    "image_analyze": "analyze_engineering_diagram",
-}
+DOC_TOOLS = {"generate_word_document", "generate_excel_sheet", "generate_presentation"}
+
+
+def _resolve_kwargs(func, tool_input: dict) -> dict:
+    """Fill required string params from step context. Generic, no per-tool aliasing.
+
+    Validates that every input key matches a declared parameter (after file_path↔image_path
+    aliasing). Unknown keys fail loud — silent typo-swallowing let `filepath`/`file_path`
+    mismatches cascade into file_read on task text. See B12.
+    """
+    sig = inspect.signature(func)
+    params = list(sig.parameters.values())
+    param_names = {p.name for p in params}
+    out = dict(tool_input)
+
+    # vision tools accept either filepath or image_path — only one is required.
+    # Alias BEFORE required-str fill so an empty fill doesn't shadow the real value.
+    # Drop the source key after aliasing so the unknown-key check below only sees params.
+    if "file_path" in out and "image_path" not in out:
+        for p in params:
+            if p.name == "image_path":
+                out["image_path"] = out["file_path"]
+                out.pop("file_path", None)
+                break
+    elif "image_path" in out and "file_path" not in out:
+        for p in params:
+            if p.name == "file_path":
+                out["file_path"] = out["image_path"]
+                out.pop("image_path", None)
+                break
+
+    # Fill the first required string param from `task` / `step_title` if not provided.
+    required_str = [
+        p for p in params
+        if p.default is inspect.Parameter.empty
+        and p.annotation in (str, inspect.Parameter.empty)
+    ]
+    if required_str and not any(p.name in out for p in required_str):
+        out[required_str[0].name] = tool_input.get("task") or tool_input.get("step_title", "")
+
+    # Reject unknown keys — keeps the planner honest about tool signatures.
+    # Meta keys (`task`, `step_title`) are agent-loop scaffolding, not planner output,
+    # so they bypass the check.
+    META_KEYS = {"task", "step_title"}
+    unknown = set(out) - param_names - META_KEYS
+    if unknown:
+        raise ValueError(
+            f"Unknown kwargs for {func.__name__}: {sorted(unknown)}. "
+            f"Declared params: {sorted(param_names)}"
+        )
+
+    return {p.name: out[p.name] for p in params if p.name in out}
 
 
 class AgentExecutor:
@@ -34,100 +80,61 @@ class AgentExecutor:
         tool_name: str,
         tool_input: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Executes a specified tool with given input arguments.
-        Routes to the Tool Registry with alias resolution and parameter adaptation.
-        """
-        # Resolve aliases
-        effective_tool = TOOL_ALIASES.get(tool_name, tool_name)
-        logger.info(f"Executing step #{step_number} with tool: {effective_tool} (original: {tool_name})")
+        """Execute a tool call and return a normalized result dict."""
+        logger.info(f"Executing step #{step_number} with tool: {tool_name}")
 
         try:
-            # Special case: code execution uses its own subprocess sandbox
-            if effective_tool == "code_execute":
+            if tool_name == "code_execute":
                 code = tool_input.get("code", "print('Kavach AI sandbox verification successful')")
                 res = await execute_python_code(code=code)
                 return {
                     "tool": "code_execute",
                     "success": res.get("success", False),
                     "output": res.get("output", ""),
-                    "raw": res
+                    "raw": res,
                 }
 
-            # Map arguments according to the specific registered tool
-            kwargs = {}
-            if effective_tool == "search_knowledge_base":
-                query = tool_input.get("query") or tool_input.get("task") or tool_input.get("step_title", "")
-                kwargs = {"query": query}
+            if tool_name in _TOOL_REGISTRY:
+                func = _TOOL_REGISTRY[tool_name]
+                kwargs = _resolve_kwargs(func, tool_input)
+                result = await execute_tool(tool_name, kwargs)
 
-            elif effective_tool == "generate_word_document":
-                title = tool_input.get("title") or tool_input.get("step_title") or "MRPL_Approval_Note"
-                content = tool_input.get("content") or tool_input.get("task", "Generated by Kavach AI Workbench.")
-                author = tool_input.get("author", "Kavach AI")
-                kwargs = {"title": title, "content": content, "author": author}
+                # Doc tools return a dict with file_id/path/filename/status.
+                # The file_id is the UUID assigned by the tool; download route
+                # scans OUTPUT_DIR as a fallback (no FileUpload row created).
+                if tool_name in DOC_TOOLS and isinstance(result, dict) and result.get("status") == "ok":
+                    return {
+                        "tool": tool_name,
+                        "success": True,
+                        "output": f"Generated {result['filename']}",
+                        "file_id": result["file_id"],
+                        "raw": result,
+                    }
 
-            elif effective_tool == "generate_excel_sheet":
-                title = tool_input.get("title") or "MRPL_Data"
-                headers = tool_input.get("headers", ["Item", "Value", "Status"])
-                rows = tool_input.get("rows", [["Inspection", "Passed", "Normal"]])
-                kwargs = {"title": title, "headers": headers, "rows": rows}
-
-            elif effective_tool == "generate_presentation":
-                title = tool_input.get("title") or "MRPL_Summary"
-                slides_content = tool_input.get("slides_content", [{"title": "Overview", "content": "Kavach AI Summary"}])
-                kwargs = {"title": title, "slides_content": slides_content}
-
-            elif effective_tool == "file_read":
-                filepath = tool_input.get("filepath", "")
-                kwargs = {"filepath": filepath}
-
-            elif effective_tool == "file_write":
-                filepath = tool_input.get("filepath", "note.txt")
-                content = tool_input.get("content", "")
-                kwargs = {"filepath": filepath, "content": content}
-
-            elif effective_tool == "extract_text_from_image":
-                filepath = tool_input.get("filepath") or tool_input.get("image_path", "")
-                kwargs = {"filepath": filepath}
-
-            elif effective_tool == "analyze_engineering_diagram":
-                filepath = tool_input.get("filepath") or tool_input.get("image_path", "")
-                query = tool_input.get("query") or tool_input.get("task", "")
-                kwargs = {"filepath": filepath, "query": query}
-
-            else:
-                kwargs = tool_input
-
-            # Execute tool if found in registry
-            if effective_tool in _TOOL_REGISTRY:
-                result = await execute_tool(effective_tool, kwargs)
-                res_str = str(result)
-                file_id = None
-                # If a document was generated, extract filename as deliverable ID
-                if "Successfully generated" in res_str and ":" in res_str:
-                    file_id = res_str.split(":")[-1].strip()
-
+                # Other tools return strings
+                output = str(result)
                 return {
-                    "tool": effective_tool,
-                    "success": not res_str.startswith("Error"),
-                    "output": res_str,
-                    "file_id": file_id
+                    "tool": tool_name,
+                    "success": not output.startswith("Error"),
+                    "output": output,
+                    "raw": result,
                 }
 
             # Default: reasoning step with no external tool call
             return {
                 "tool": tool_name or "none",
                 "success": True,
-                "output": f"Step #{step_number} reasoning and execution completed."
+                "output": f"Step #{step_number} reasoning and execution completed.",
             }
 
         except Exception as e:
-            logger.error(f"Error in step #{step_number} tool execution ({effective_tool}): {e}")
+            logger.error(f"Error in step #{step_number} tool execution ({tool_name}): {e}")
             return {
-                "tool": effective_tool,
+                "tool": tool_name,
                 "success": False,
-                "output": f"Error executing tool {effective_tool}: {str(e)}"
+                "output": f"Error executing tool {tool_name}: {str(e)}",
             }
 
 
 executor = AgentExecutor()
+

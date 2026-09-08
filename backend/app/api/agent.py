@@ -3,13 +3,13 @@ Kavach AI — Agent API Endpoints
 Executes autonomous multi-step ReAct agent workflows with SSE progress streaming.
 """
 
-from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from app.schemas.agent import AgentExecuteRequest
 from app.agent.loop import agent_loop
+from app.core.cancellation import registry as cancel_registry
 from app.models.agent_task import AgentTask
 from app.models.agent_step import AgentStep
 
@@ -29,8 +29,10 @@ async def execute_agent_task(request: AgentExecuteRequest):
             task_description=request.task_description,
             conversation_id=request.conversation_id,
             model_override=request.model_override,
+            system_prompt=request.system_prompt,
             file_ids=file_ids,
-            max_steps=request.max_steps or 10
+            max_steps=request.max_steps or 10,
+            cancel_event=cancel_registry.get(request.conversation_id or "agent_pending"),
         ),
         media_type="text/event-stream"
     )
@@ -79,3 +81,19 @@ async def get_task_details(task_id: str):
             for s in steps
         ],
     }
+
+
+@router.post("/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """
+    POST /api/agent/tasks/{id}/cancel
+    Signal cancellation for a running task. Idempotent.
+    The loop's final write is authoritative for task.status; this handler only signals.
+    """
+    task = await AgentTask.get_or_none(id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    cancel_registry.cancel(str(task.conversation_id))
+    cancel_registry.cancel(task_id)
+    return {"status": "cancellation_signaled", "task_id": task_id}
