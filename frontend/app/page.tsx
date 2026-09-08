@@ -20,9 +20,12 @@ interface HealthData {
   };
 }
 
+import { RoutingWorkflowModal } from "@/components/agent/RoutingWorkflowModal";
+
 export default function DashboardPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRoutingModalOpen, setIsRoutingModalOpen] = useState(false);
 
   const fetchHealth = async () => {
     setLoading(true);
@@ -45,7 +48,9 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8 max-w-6xl mx-auto relative h-full overflow-y-auto overflow-x-hidden">
+      <RoutingWorkflowModal open={isRoutingModalOpen} onOpenChange={setIsRoutingModalOpen} />
+      
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground">MRPL Operational Dashboard</h1>
@@ -55,7 +60,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => alert("Routing Workflow Pattern Modal/Action")}
+            onClick={() => setIsRoutingModalOpen(true)}
             className="flex items-center gap-2 px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
           >
             <GitBranch className="w-4 h-4" />
