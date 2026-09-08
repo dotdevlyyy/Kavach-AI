@@ -1,0 +1,26 @@
+MRPL Standard Operating Procedure (SOP)
+Unit: Crude Distillation Unit (CDU)
+Subject: Corrosion Monitoring and Mitigation
+
+1. Objective
+To monitor and mitigate corrosion in the CDU overhead system and distillation towers.
+
+2. Responsibilities
+- Panel Operator: Monitor overhead temperature and pH levels.
+- Field Operator: Collect water samples and check chemical injection pumps.
+- Inspection Engineer: Conduct routine ultrasonic thickness (UT) measurements.
+
+3. Procedure
+3.1. Wash Water Injection
+- Ensure wash water injection rate is maintained at 5-7% of crude feed rate.
+- If chloride levels in the sour water exceed 50 ppm, increase wash water injection by 10%.
+
+3.2. Neutralizing Amine Injection
+- Monitor the pH of the overhead accumulator boot water. Target pH is 5.5 to 6.5.
+- Adjust amine injection pump stroke to maintain target pH.
+
+3.3. Filming Amine Injection
+- Maintain continuous dosage of filming amine as per vendor recommendations.
+
+4. Emergency Response
+- If overhead pH drops below 4.0, immediately notify the shift supervisor and increase neutralizing amine dosage to maximum safe capacity.
