@@ -18,16 +18,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className={`${inter.className} bg-background text-foreground flex h-screen overflow-hidden`}>
         <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
           <Topbar />
-          <main className="flex-1 overflow-auto bg-background">
+          <main className="flex-1 overflow-auto bg-white">
             {children}
           </main>
         </div>
-        <Toaster theme="dark" position="bottom-right" className="font-sans" />
+        <Toaster theme="light" position="bottom-right" className="font-sans" />
       </body>
     </html>
   );

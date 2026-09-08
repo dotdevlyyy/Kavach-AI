@@ -122,60 +122,91 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-        <div className="max-w-4xl mx-auto">
-          {messages.length === 0 && (
-            <div className="text-center text-muted-foreground mt-20">
-              <h2 className="text-xl font-bold mb-2">Kavach AI Workbench Ready</h2>
-              <p>System is air-gapped. Connects locally to Ollama on port 11434.</p>
-            </div>
-          )}
-          {messages.map((msg) => (
-            <div key={msg.id} className="mb-6">
-              {msg.content === "" && msg.role === "assistant" && isStreaming ? (
-                <div className="flex w-full justify-start animate-pulse">
-                  <div className="w-[60%] rounded-xl px-5 py-4 bg-card border border-border rounded-tl-sm flex flex-col gap-3">
-                    <div className="h-4 bg-sidebar-accent rounded w-3/4"></div>
-                    <div className="h-4 bg-sidebar-accent rounded w-1/2"></div>
-                    <div className="h-4 bg-sidebar-accent rounded w-5/6"></div>
-                  </div>
-                </div>
-              ) : (
-                <MessageBubble 
-                  role={msg.role}
-                  content={msg.content}
-                  model={msg.model}
-                />
-              )}
+      <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-white text-black">
+        <div className="max-w-4xl mx-auto h-full flex flex-col">
+          {messages.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center mt-[-100px]">
+              <div className="flex items-center justify-center gap-4 mb-4 text-gray-700">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
               
-              {/* Render Agent Steps inside the message area if any */}
-              {msg.steps && msg.steps.length > 0 && (
-                <div className="ml-12 mr-12 mb-4">
-                  {msg.steps.map(step => (
-                    <AgentStepCard key={step.id} step={step} />
-                  ))}
-                </div>
-              )}
-
-              {/* Render Deliverables */}
-              {msg.deliverables && msg.deliverables.length > 0 && (
-                <div className="ml-12 mr-12 flex flex-wrap gap-2">
-                  {msg.deliverables.map(file => (
-                    <DeliverableCard 
-                      key={file.id} 
-                      id={file.id} 
-                      filename={file.filename} 
-                      type={file.type} 
-                    />
-                  ))}
-                </div>
-              )}
+              <h2 className="text-2xl font-bold mb-3 text-black">Sub-Agent Orchestrator</h2>
+              <p className="text-gray-500 text-sm max-w-md mb-6 leading-relaxed">
+                A custom Agent implementation that routes requests to specialized sub-agents. The orchestrator analyzes your query and delegates to the appropriate agent: <span className="bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 font-mono">research</span>, <span className="bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 font-mono">analysis</span>, or <span className="bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 font-mono">support</span>.
+              </p>
+              
+              <div className="flex items-center gap-3 text-gray-400 text-xs">
+                <span className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded px-2 py-1"><span className="text-[10px]">✨</span> tool()</span>
+                <span className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded px-2 py-1">ToolLoopAgent</span>
+                <span className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded px-2 py-1">stepCountIs()</span>
+              </div>
             </div>
-          ))}
-          <div ref={messagesEndRef} />
+          ) : (
+            <>
+              {messages.map((msg) => (
+                <div key={msg.id} className="mb-6">
+                  {msg.content === "" && msg.role === "assistant" && isStreaming ? (
+                    <div className="flex w-full justify-center py-10">
+                      <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <MessageBubble 
+                      role={msg.role}
+                      content={msg.content}
+                      model={msg.model}
+                    />
+                  )}
+                  
+                  {/* Render Agent Steps inside the message area if any */}
+                  {msg.steps && msg.steps.length > 0 && (
+                    <div className="ml-12 mr-12 mb-4">
+                      {msg.steps.map(step => (
+                        <AgentStepCard key={step.id} step={step} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Render Deliverables */}
+                  {msg.deliverables && msg.deliverables.length > 0 && (
+                    <div className="ml-12 mr-12 flex flex-wrap gap-2">
+                      {msg.deliverables.map(file => (
+                        <DeliverableCard 
+                          key={file.id} 
+                          id={file.id} 
+                          filename={file.filename} 
+                          type={file.type} 
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </>
+          )}
         </div>
       </div>
-      <div className="p-4 bg-background border-t border-border shrink-0">
+      
+      {/* Suggestion Chips and Chat Window */}
+      <div className="p-4 bg-white shrink-0">
+        {messages.length === 0 && (
+          <div className="max-w-4xl mx-auto flex gap-2 mb-3 px-2 overflow-x-auto">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              Research the latest trends in AI development
+            </button>
+            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              Analyze the pros and cons of microservices architecture
+            </button>
+            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              How do I deploy...
+            </button>
+          </div>
+        )}
         <ChatWindow 
           onSendMessage={handleSendMessage} 
           isStreaming={isStreaming} 

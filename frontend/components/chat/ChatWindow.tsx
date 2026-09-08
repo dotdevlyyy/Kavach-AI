@@ -45,40 +45,45 @@ export function ChatWindow({ onSendMessage, isStreaming }: ChatWindowProps) {
         <FileUploadZone onFilesSelected={(newFiles) => setFiles(prev => [...prev, ...newFiles])} />
       )}
       
-      <div className="relative flex items-end gap-2 bg-card border border-border rounded-xl p-2 shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
-        <button 
-          onClick={() => setShowUploader(!showUploader)}
-          className={`p-2 rounded-lg transition-colors ${showUploader || files.length > 0 ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-sidebar-accent"}`}
-          title="Attach files"
-        >
-          <Paperclip className="w-5 h-5" />
-          {files.length > 0 && (
-            <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center">
-              {files.length}
-            </span>
-          )}
-        </button>
-
+      <div className="relative flex flex-col bg-white border border-gray-200 rounded-xl p-3 shadow-sm focus-within:border-gray-300 transition-colors h-[140px]">
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Kavach AI to analyze a report, write code, or execute a task..."
-          className="flex-1 max-h-[200px] bg-transparent border-none focus:ring-0 resize-none py-2 px-1 text-sm text-foreground placeholder:text-muted-foreground"
-          rows={1}
+          placeholder="Ask a question that will route to a sub-agent..."
+          className="flex-1 w-full bg-transparent border-none focus:ring-0 resize-none py-1 px-1 text-sm text-gray-800 placeholder:text-gray-500"
         />
 
-        <button 
-          onClick={handleSubmit}
-          disabled={(!input.trim() && files.length === 0) || isStreaming}
-          className="p-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
-        >
-          <Send className="w-5 h-5" />
-        </button>
-      </div>
-      <div className="text-center text-[10px] text-muted-foreground">
-        Kavach AI can make mistakes. Always verify critical MRPL outputs.
+        <div className="flex justify-between items-center mt-auto">
+          <button 
+            onClick={() => setShowUploader(!showUploader)}
+            className={`p-1.5 rounded-lg transition-colors ${showUploader || files.length > 0 ? "text-primary" : "text-gray-400 hover:bg-gray-100"}`}
+            title="Attach files"
+          >
+            <Paperclip className="w-4 h-4" />
+            {files.length > 0 && (
+              <span className="absolute bottom-4 left-6 w-3 h-3 rounded-full bg-primary text-[8px] font-bold text-white flex items-center justify-center">
+                {files.length}
+              </span>
+            )}
+          </button>
+
+          <button 
+            onClick={handleSubmit}
+            disabled={(!input.trim() && files.length === 0) || isStreaming}
+            className="p-1.5 rounded-lg bg-gray-500 text-white disabled:opacity-30 disabled:bg-gray-300 hover:bg-gray-600 transition-colors"
+          >
+            {isStreaming ? (
+              <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14"></path>
+                <path d="m12 5 7 7-7 7"></path>
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
