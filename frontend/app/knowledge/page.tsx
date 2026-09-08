@@ -17,11 +17,9 @@ export default function KnowledgeBasePage() {
         <h1 className="text-3xl font-bold text-foreground">Knowledge Base Manager</h1>
         
         <Dialog>
-          <DialogTrigger asChild>
-            <button className="px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
-              <UploadCloud className="w-5 h-5" />
-              Upload SOP Document
-            </button>
+          <DialogTrigger className="px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
+            <UploadCloud className="w-5 h-5" />
+            Upload SOP Document
           </DialogTrigger>
           <DialogContent className="sm:max-w-md border-border bg-card">
             <DialogHeader>
