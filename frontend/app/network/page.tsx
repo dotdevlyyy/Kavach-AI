@@ -64,7 +64,7 @@ export default function NetworkMonitorPage() {
       amplitude={2}
       className="min-h-screen bg-background"
     >
-      <div className="p-8 relative z-10 w-full h-full flex flex-col items-center justify-center min-h-[80vh] text-center">
+      <div className="p-8 relative z-10 w-full h-full flex flex-col items-center min-h-[80vh] text-center pt-16">
         <div className="mb-6 p-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 animate-pulse flex items-center justify-center">
           <ShieldAlert className="w-16 h-16 text-emerald-500" />
         </div>
