@@ -8,6 +8,8 @@ import { DeliverableCard } from "@/components/agent/DeliverableCard";
 import { consumeSSEStream, uploadFiles, StreamEvent } from "@/lib/StreamConsumer";
 import { useChatStore } from "@/lib/store";
 import { v4 as uuidv4 } from 'uuid';
+import { GitBranch } from "lucide-react";
+import { ChatWorkflowModal } from "@/components/chat/ChatWorkflowModal";
 
 export default function ChatPage() {
   const activeChatId = useChatStore((state) => state.activeChatId);
@@ -27,6 +29,7 @@ export default function ChatPage() {
   const messages = activeChat?.messages || [];
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -132,7 +135,23 @@ export default function ChatPage() {
   const hasUserMessage = messages.some((m: any) => m.role === "user");
 
   return (
-    <div className="min-h-full flex flex-col bg-background text-foreground">
+    <div className="min-h-full flex flex-col bg-background text-foreground relative">
+      <ChatWorkflowModal 
+        open={isWorkflowModalOpen} 
+        onOpenChange={setIsWorkflowModalOpen} 
+        messages={messages} 
+      />
+      
+      {hasUserMessage && (
+        <button
+          onClick={() => setIsWorkflowModalOpen(true)}
+          className="fixed top-24 right-8 z-20 flex items-center gap-2 px-3 py-2 bg-card border border-border shadow-lg rounded-xl text-xs font-semibold hover:border-primary/50 text-foreground transition-colors"
+        >
+          <GitBranch className="w-4 h-4 text-primary" />
+          View Workflow Trace
+        </button>
+      )}
+
       <div className="flex-1 p-6">
         <div className={`max-w-4xl mx-auto ${!hasUserMessage ? 'min-h-[calc(100vh-200px)] flex flex-col' : ''}`}>
           {messages.length === 0 ? (
