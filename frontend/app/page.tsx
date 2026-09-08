@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, ShieldCheck, Cpu, RefreshCw } from "lucide-react";
+import { Activity, ShieldCheck, Cpu, RefreshCw, GitBranch } from "lucide-react";
 import GlareHover from "@/components/ui/GlareHover";
 
 interface HealthData {
@@ -20,9 +20,12 @@ interface HealthData {
   };
 }
 
+import { RoutingWorkflowModal } from "@/components/agent/RoutingWorkflowModal";
+
 export default function DashboardPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRoutingModalOpen, setIsRoutingModalOpen] = useState(false);
 
   const fetchHealth = async () => {
     setLoading(true);
@@ -45,7 +48,9 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8 max-w-6xl mx-auto relative h-full overflow-y-auto overflow-x-hidden">
+      <RoutingWorkflowModal open={isRoutingModalOpen} onOpenChange={setIsRoutingModalOpen} />
+      
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground">MRPL Operational Dashboard</h1>
@@ -53,14 +58,23 @@ export default function DashboardPage() {
             Kavach AI Sovereign On-Premises Industrial Workbench
           </p>
         </div>
-        <button
-          onClick={fetchHealth}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 bg-sidebar-accent border border-border rounded-lg text-xs text-foreground hover:bg-sidebar-accent/80 transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          Check Health
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsRoutingModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <GitBranch className="w-4 h-4" />
+            Routing Workflow Pattern
+          </button>
+          <button
+            onClick={fetchHealth}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 bg-sidebar-accent border border-border rounded-lg text-xs text-foreground hover:bg-sidebar-accent/80 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Check Health
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

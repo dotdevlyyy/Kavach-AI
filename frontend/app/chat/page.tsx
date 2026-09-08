@@ -8,6 +8,8 @@ import { DeliverableCard } from "@/components/agent/DeliverableCard";
 import { consumeSSEStream, uploadFiles, StreamEvent } from "@/lib/StreamConsumer";
 import { useChatStore } from "@/lib/store";
 import { v4 as uuidv4 } from 'uuid';
+import { GitBranch } from "lucide-react";
+import { ChatWorkflowModal } from "@/components/chat/ChatWorkflowModal";
 
 export default function ChatPage() {
   const activeChatId = useChatStore((state) => state.activeChatId);
@@ -27,6 +29,7 @@ export default function ChatPage() {
   const messages = activeChat?.messages || [];
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -129,10 +132,28 @@ export default function ChatPage() {
     setIsStreaming(false);
   };
 
+  const hasUserMessage = messages.some((m: any) => m.role === "user");
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-white text-black">
-        <div className="max-w-4xl mx-auto h-full flex flex-col">
+    <div className="min-h-full flex flex-col bg-background text-foreground relative">
+      <ChatWorkflowModal 
+        open={isWorkflowModalOpen} 
+        onOpenChange={setIsWorkflowModalOpen} 
+        messages={messages} 
+      />
+      
+      {hasUserMessage && (
+        <button
+          onClick={() => setIsWorkflowModalOpen(true)}
+          className="fixed top-24 right-8 z-20 flex items-center gap-2 px-3 py-2 bg-card border border-border shadow-lg rounded-xl text-xs font-semibold hover:border-primary/50 text-foreground transition-colors"
+        >
+          <GitBranch className="w-4 h-4 text-primary" />
+          View Workflow Trace
+        </button>
+      )}
+
+      <div className="flex-1 p-6">
+        <div className={`max-w-4xl mx-auto ${!hasUserMessage ? 'min-h-[calc(100vh-200px)] flex flex-col' : ''}`}>
           {messages.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center mt-[-100px]">
               <div className="flex items-center justify-center gap-4 mb-4 text-gray-700">
@@ -199,18 +220,18 @@ export default function ChatPage() {
       </div>
       
       {/* Suggestion Chips and Chat Window */}
-      <div className="p-4 bg-white shrink-0">
+      <div className="sticky bottom-0 z-10 p-4 bg-background shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] border-t border-border/50">
         {messages.length === 0 && (
           <div className="max-w-4xl mx-auto flex gap-2 mb-3 px-2 overflow-x-auto">
-            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-card border border-border text-muted-foreground hover:text-foreground text-xs rounded-lg hover:bg-sidebar-accent transition-colors flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               Research the latest trends in AI development
             </button>
-            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-card border border-border text-muted-foreground hover:text-foreground text-xs rounded-lg hover:bg-sidebar-accent transition-colors flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
               Analyze the pros and cons of microservices architecture
             </button>
-            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-card border border-border text-muted-foreground hover:text-foreground text-xs rounded-lg hover:bg-sidebar-accent transition-colors flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               How do I deploy...
             </button>
