@@ -15,6 +15,7 @@ from app.core.ollama_client import ollama_client
 from app.api.chat import router as chat_router
 from app.api.agent import router as agent_router
 from app.api.files import router as files_router
+from app.api.network import router as network_router
 
 
 @asynccontextmanager
@@ -58,6 +59,7 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(agent_router)
 app.include_router(files_router)
+app.include_router(network_router)
 
 
 @app.get("/")
