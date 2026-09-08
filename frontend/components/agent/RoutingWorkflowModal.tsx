@@ -8,15 +8,15 @@ interface RoutingWorkflowModalProps {
 export function RoutingWorkflowModal({ open, onOpenChange }: RoutingWorkflowModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[1300px] h-[85vh] flex flex-col bg-background border-border p-0 overflow-hidden rounded-xl">
-        <div className="p-5 border-b border-border bg-card shadow-sm z-20 relative">
+      <DialogContent className="!max-w-[100vw] sm:!max-w-[100vw] !w-screen !h-screen !rounded-none flex flex-col bg-background border-none p-0 overflow-hidden">
+        <div className="p-6 border-b border-border bg-card shadow-sm z-20 relative">
           <DialogTitle className="text-xl font-bold text-foreground">Routing Workflow Pattern</DialogTitle>
           <p className="text-sm text-muted-foreground mt-1">Autonomous request classification and conditional routing</p>
         </div>
         
         <div className="flex-1 overflow-auto relative p-8 bg-[radial-gradient(#1e293b_1px,transparent_1px)] dark:bg-[radial-gradient(#222222_1px,transparent_1px)] [background-size:16px_16px] flex items-center justify-center">
           
-          <div className="flex items-center gap-12 relative z-10 scale-[0.85] origin-center">
+          <div className="flex items-center gap-12 relative z-10 scale-100 origin-center">
             
             {/* Step 1 */}
             <div className="flex-shrink-0 w-[260px] bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden relative">
