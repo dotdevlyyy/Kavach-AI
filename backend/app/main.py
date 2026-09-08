@@ -16,6 +16,7 @@ from app.api.chat import router as chat_router
 from app.api.agent import router as agent_router
 from app.api.files import router as files_router
 from app.api.network import router as network_router
+from app.api.health import router as health_router
 
 
 @asynccontextmanager
@@ -60,6 +61,7 @@ app.include_router(chat_router)
 app.include_router(agent_router)
 app.include_router(files_router)
 app.include_router(network_router)
+app.include_router(health_router)
 
 
 @app.get("/")
@@ -73,8 +75,8 @@ async def root():
     }
 
 
-@app.get("/api/health")
-async def health_check():
+
+
     """System, Database, and Ollama health check endpoint."""
     ollama_ok, latency = await ollama_client.is_healthy()
 
