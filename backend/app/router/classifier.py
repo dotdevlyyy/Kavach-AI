@@ -112,7 +112,7 @@ def classify_task(
     max_type = max(scores, key=lambda k: scores[k])
     max_score = scores[max_type]
 
-    if max_score >= 2:
+    if max_score >= 1:
         # Find matched keywords for reasoning
         if max_type == TaskType.CODE_GENERATION:
             matched = [kw for kw in CODE_KEYWORDS if kw in message_lower]
