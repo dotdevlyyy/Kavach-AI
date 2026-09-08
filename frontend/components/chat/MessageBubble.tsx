@@ -20,8 +20,8 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-8`}>
       <div className={`max-w-[85%] ${
         isUser 
-          ? "bg-gray-100 text-gray-900 rounded-2xl px-5 py-3" 
-          : "text-gray-900 px-2"
+          ? "bg-primary/20 border border-primary/30 text-foreground rounded-2xl px-5 py-3" 
+          : "text-foreground px-2"
       }`}>
         {/* Header for assistant messages showing which model answered */}
         {!isUser && model && (
@@ -34,7 +34,7 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
         )}
 
         {/* Content using ReactMarkdown */}
-        <div className="prose max-w-none text-sm text-gray-800">
+        <div className="prose max-w-none text-sm text-foreground dark:prose-invert">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
