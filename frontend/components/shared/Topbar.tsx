@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { User, Settings, LogOut, ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
 
 export function Topbar() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -22,7 +23,9 @@ export function Topbar() {
 
   const handleLogout = () => {
     setIsDropdownOpen(false);
-    alert("Initiating secure logout sequence...");
+    toast.success("Secure Logout Initiated", {
+      description: "Clearing session data and locking terminal...",
+    });
     // Real logout logic goes here
   };
 

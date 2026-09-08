@@ -132,11 +132,21 @@ export default function ChatPage() {
           )}
           {messages.map((msg) => (
             <div key={msg.id} className="mb-6">
-              <MessageBubble 
-                role={msg.role}
-                content={msg.content}
-                model={msg.model}
-              />
+              {msg.content === "" && msg.role === "assistant" && isStreaming ? (
+                <div className="flex w-full justify-start animate-pulse">
+                  <div className="w-[60%] rounded-xl px-5 py-4 bg-card border border-border rounded-tl-sm flex flex-col gap-3">
+                    <div className="h-4 bg-sidebar-accent rounded w-3/4"></div>
+                    <div className="h-4 bg-sidebar-accent rounded w-1/2"></div>
+                    <div className="h-4 bg-sidebar-accent rounded w-5/6"></div>
+                  </div>
+                </div>
+              ) : (
+                <MessageBubble 
+                  role={msg.role}
+                  content={msg.content}
+                  model={msg.model}
+                />
+              )}
               
               {/* Render Agent Steps inside the message area if any */}
               {msg.steps && msg.steps.length > 0 && (

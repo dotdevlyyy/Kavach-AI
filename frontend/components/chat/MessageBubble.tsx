@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ModelBadge } from "./ModelBadge";
+import { toast } from "sonner";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -46,7 +47,9 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
                       <button 
                         onClick={() => {
                           navigator.clipboard.writeText(String(children).replace(/\n$/, ""));
-                          alert("Code copied to clipboard!"); // Simple visual feedback
+                          toast.success("Code copied to clipboard", {
+                            description: "You can now paste this directly into your IDE.",
+                          });
                         }}
                         className="hover:text-primary transition-colors cursor-pointer"
                       >
