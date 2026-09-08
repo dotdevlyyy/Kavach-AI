@@ -204,15 +204,15 @@ export default function ChatPage() {
       <div className="sticky bottom-0 z-10 p-4 bg-background shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] border-t border-border/50">
         {messages.length === 0 && (
           <div className="max-w-4xl mx-auto flex gap-2 mb-3 px-2 overflow-x-auto">
-            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-card border border-border text-muted-foreground hover:text-foreground text-xs rounded-lg hover:bg-sidebar-accent transition-colors flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               Research the latest trends in AI development
             </button>
-            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-card border border-border text-muted-foreground hover:text-foreground text-xs rounded-lg hover:bg-sidebar-accent transition-colors flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
               Analyze the pros and cons of microservices architecture
             </button>
-            <button className="whitespace-nowrap px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5">
+            <button className="whitespace-nowrap px-3 py-1.5 bg-card border border-border text-muted-foreground hover:text-foreground text-xs rounded-lg hover:bg-sidebar-accent transition-colors flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               How do I deploy...
             </button>
