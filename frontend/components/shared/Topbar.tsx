@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { User, Settings, LogOut, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { AnimatedThemeToggler } from "./AnimatedThemeToggler";
+
 export function Topbar() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -44,6 +46,8 @@ export function Topbar() {
           Local Process: <span className="font-mono text-foreground">:8000</span>
         </div>
         
+        <AnimatedThemeToggler />
+
         {/* Clickable Profile Avatar */}
         <div className="relative" ref={dropdownRef}>
           <button 
