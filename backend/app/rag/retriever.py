@@ -28,6 +28,11 @@ async def _hydrate_batch(chunk_ids: list[str]) -> dict[str, dict]:
 async def search_fts(query: str, limit: int = 5) -> List[Dict]:
     """Search knowledge chunks using SQLite FTS5 (BM25 ranking)."""
     conn = Tortoise.get_connection("default")
+    
+    # Sanitize query for FTS5 to prevent syntax errors on special characters
+    safe_query = query.replace('"', ' ').replace("'", ' ')
+    fts_query_str = f'"{safe_query}"'
+    
     rows = await conn.execute_query_dict(
         """
         SELECT chunk_id, content, document_name, rank
@@ -36,7 +41,7 @@ async def search_fts(query: str, limit: int = 5) -> List[Dict]:
         ORDER BY rank
         LIMIT ?
         """,
-        [query, limit],
+        [fts_query_str, limit],
     )
     return [
         {

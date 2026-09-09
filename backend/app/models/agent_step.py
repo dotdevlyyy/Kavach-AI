@@ -19,6 +19,7 @@ class AgentStep(models.Model):
     type = fields.CharEnumField(enum_type=StepType, max_length=20)
     content = fields.TextField()
     model_used = fields.CharField(max_length=100, null=True)
+    tool_calls = fields.JSONField(default=list)
     duration_ms = fields.IntField(default=0)
     created_at = fields.DatetimeField(auto_now_add=True)
 

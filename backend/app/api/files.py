@@ -120,10 +120,12 @@ async def download_file(file_id: str):
     # Agent-generated docs: no FileUpload row, scan OUTPUT_DIR.
     output_path = _resolve_output_path(file_id)
     if output_path:
+        mime_type = "application/pdf" if output_path.suffix.lower() == ".pdf" else "application/octet-stream"
         return FileResponse(
             path=str(output_path),
             filename=output_path.name,
-            media_type="application/octet-stream",
+            media_type=mime_type,
+            content_disposition_type="inline",
         )
 
     raise HTTPException(status_code=404, detail="File not found")
