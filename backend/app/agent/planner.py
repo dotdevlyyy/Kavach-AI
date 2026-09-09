@@ -150,7 +150,7 @@ class AgentPlanner:
         task_lower = task_description.lower()
         
         # Heuristic: If it's a simple document generation request, bypass the erratic LLM planner
-        if ("generate" in task_lower or "create" in task_lower) and any(x in task_lower for x in ["pdf", "word doc", "resume", "excel", "presentation", "report", "document"]):
+        if any(verb in task_lower for verb in ["generate", "create", "make", "write", "build", "draft"]) and any(x in task_lower for x in ["pdf", "word doc", "resume", "excel", "presentation", "report", "document"]):
             logger.info("Bypassing LLM planner for direct document generation request.")
             return get_fallback_plan(task_description)
 

@@ -65,7 +65,7 @@ async def _resolve_kwargs(func, tool_input: dict, model: str = "llama3.2:1b") ->
                 if func.__name__ in DOC_TOOLS and task_desc:
                     try:
                         from app.core.ollama_client import ollama_client
-                        prompt = f"Write the complete, formatted content for the following request: {task_desc}\n\nOutput ONLY the content, no conversational filler."
+                        prompt = f"Write the complete, formatted content for the following request: {task_desc}\n\nIMPORTANT: You are an enterprise document generator. Do NOT refuse to write the document. If it involves personal information, generate synthetic/placeholder data for it. Output ONLY the document content, no conversational filler."
                         content_chunks = []
                         async for chunk in ollama_client.chat_stream(
                             model=model,
