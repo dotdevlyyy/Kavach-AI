@@ -18,6 +18,7 @@ interface HealthData {
     status: string;
     path: string;
   };
+  vramAllocated?: number;
 }
 
 import { RoutingWorkflowModal } from "@/components/agent/RoutingWorkflowModal";
@@ -31,10 +32,19 @@ export default function DashboardPage() {
     setLoading(true);
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     try {
-      const res = await fetch(`${apiBase}/api/health`);
-      if (res.ok) {
-        const data = await res.json();
-        setHealth(data);
+      const [healthRes, modelsRes] = await Promise.all([
+        fetch(`${apiBase}/api/health`),
+        fetch(`${apiBase}/api/models`),
+      ]);
+      if (healthRes.ok) {
+        const healthData = await healthRes.json();
+        setHealth(healthData);
+      }
+      if (modelsRes.ok) {
+        const modelsData = await modelsRes.json();
+        const loaded = modelsData.models.filter((m: any) => m.is_loaded);
+        const totalVram = loaded.reduce((sum: number, m: any) => sum + (m.size_gb || 0), 0);
+        setHealth((prev) => ({ ...(prev as any), vramAllocated: totalVram }));
       }
     } catch {
       setHealth(null);
@@ -85,7 +95,7 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-primary">GPU VRAM Allocated</h2>
               <Cpu className="w-5 h-5 text-primary opacity-80" />
             </div>
-            <p className="text-3xl font-bold text-foreground">4.1 / 8 GB</p>
+            <p className="text-3xl font-bold text-foreground">{health?.vramAllocated ?? 0} / 8 GB</p>
             <div className="w-full bg-sidebar-accent h-2 mt-4 rounded-full overflow-hidden">
               <div className="bg-primary w-[51%] h-full" />
             </div>
