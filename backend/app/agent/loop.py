@@ -144,6 +144,7 @@ class AgentLoop:
                         step_number=step_idx,
                         tool_name=tool_name,
                         tool_input=tool_input,
+                        model=selected_model
                     ),
                     timeout=PER_STEP_SECONDS,
                 )

@@ -20,7 +20,7 @@ import app.rag.knowledge_search  # noqa: F401
 DOC_TOOLS = {"generate_word_document", "generate_excel_sheet", "generate_presentation", "generate_pdf_document"}
 
 
-def _resolve_kwargs(func, tool_input: dict) -> dict:
+async def _resolve_kwargs(func, tool_input: dict, model: str = "llama3.2:1b") -> dict:
     """Fill required string params from step context. Generic, no per-tool aliasing.
 
     Validates that every input key matches a declared parameter (after file_path↔image_path
@@ -60,7 +60,26 @@ def _resolve_kwargs(func, tool_input: dict) -> dict:
             if p.name == "title":
                 out[p.name] = tool_input.get("step_title") or "Generated Document"
             elif p.name == "content":
-                out[p.name] = tool_input.get("description") or tool_input.get("task") or "No content provided."
+                # If this is a document tool, use the LLM to write the actual content!
+                task_desc = tool_input.get("task", "")
+                if func.__name__ in DOC_TOOLS and task_desc:
+                    try:
+                        from app.core.ollama_client import ollama_client
+                        prompt = f"Write the complete, formatted content for the following request: {task_desc}\n\nOutput ONLY the content, no conversational filler."
+                        content_chunks = []
+                        async for chunk in ollama_client.chat_stream(
+                            model=model,
+                            messages=[{"role": "user", "content": prompt}]
+                        ):
+                            content_chunks.append(chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", ""))
+                        
+                        out[p.name] = "".join(content_chunks).strip() or task_desc
+                    except Exception as e:
+                        import traceback
+                        print(f"LLM doc gen failed: {e}\n{traceback.format_exc()}")
+                        out[p.name] = tool_input.get("description") or task_desc or "No content provided."
+                else:
+                    out[p.name] = tool_input.get("description") or task_desc or "No content provided."
             else:
                 out[p.name] = tool_input.get("task") or tool_input.get("step_title") or "Unknown"
 
@@ -85,7 +104,8 @@ class AgentExecutor:
         self,
         step_number: int,
         tool_name: str,
-        tool_input: Dict[str, Any]
+        tool_input: Dict[str, Any],
+        model: str = "llama3.2:1b"
     ) -> Dict[str, Any]:
         """Execute a tool call and return a normalized result dict."""
         logger.info(f"Executing step #{step_number} with tool: {tool_name}")
@@ -103,7 +123,7 @@ class AgentExecutor:
 
             if tool_name in _TOOL_REGISTRY:
                 func = _TOOL_REGISTRY[tool_name]
-                kwargs = _resolve_kwargs(func, tool_input)
+                kwargs = await _resolve_kwargs(func, tool_input, model=model)
                 result = await execute_tool(tool_name, kwargs)
 
                 # Doc tools return a dict with file_id/path/filename/status.

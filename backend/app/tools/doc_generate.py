@@ -114,8 +114,10 @@ def generate_pdf_document(title: str, content: str, author: str = "Kavach AI") -
         pdf.ln(5)
         
         pdf.set_font("Arial", '', 11)
+        # Clean unicode characters for FPDF's default Arial
+        clean_content = content.encode('latin-1', 'replace').decode('latin-1')
         # multi_cell automatically wraps text
-        pdf.multi_cell(0, 6, content)
+        pdf.multi_cell(0, 6, clean_content)
         
         pdf.output(str(meta["path"]))
         meta["status"] = "ok"

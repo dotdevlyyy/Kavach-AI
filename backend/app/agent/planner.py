@@ -147,6 +147,13 @@ class AgentPlanner:
         file_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Generates a structured execution plan from the user prompt."""
+        task_lower = task_description.lower()
+        
+        # Heuristic: If it's a simple document generation request, bypass the erratic LLM planner
+        if ("generate" in task_lower or "create" in task_lower) and any(x in task_lower for x in ["pdf", "word doc", "resume", "excel", "presentation", "report", "document"]):
+            logger.info("Bypassing LLM planner for direct document generation request.")
+            return get_fallback_plan(task_description)
+
         user_content = f"Task Description: {task_description}"
         if file_ids:
             user_content += f"\nAttached Files: {', '.join(file_ids)}"
