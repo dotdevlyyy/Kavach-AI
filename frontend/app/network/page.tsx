@@ -32,7 +32,7 @@ export default function NetworkMonitorPage() {
     setError(null);
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     try {
-      const res = await fetch(`${apiBase}/api/network`);
+      const res = await fetch(`${apiBase}/api/network/connections`);
       if (res.ok) {
         const data: NetworkAuditData = await res.json();
         setAudit(data);
