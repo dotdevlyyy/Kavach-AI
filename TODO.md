@@ -162,30 +162,30 @@
 * `frontend/components/agent/DeliverableCard.tsx`
 
 ### 📋 Basudev's Checklist
-- [ ] **Frontend Foundation & Design System:**
-  - [ ] Initialize `frontend/` with Next.js 15, Bun runtime, TypeScript, and Tailwind CSS.
-  - [ ] Integrate Cult UI / shadcn components (Button, Input, Card, Badge, Accordion, ScrollArea, Tabs, Dialog).
-  - [ ] Apply dark industrial refinery theme (slate `#090d16`, amber `#f59e0b`, emerald `#10b981`).
-  - [ ] Build responsive root layout with collapsible navigation sidebar and top system status bar.
-- [ ] **Interactive Streaming Chat (`/chat`):**
-  - [ ] Conversational feed with auto-scroll and history loading.
-  - [ ] Auto-expanding multiline prompt textarea with keyboard shortcuts (Enter to send, Shift+Enter for newline).
-  - [ ] Conversation sidebar: create new conversation, switch active chat, delete chat.
-- [ ] **Real-Time SSE Stream Consumer (`StreamConsumer.ts`):**
-  - [ ] Implement `fetch` stream reader consuming `metadata`, `step`, `token`, and `done` events from Ankit's API.
-  - [ ] Token-by-token markdown rendering (`react-markdown` + syntax highlighter + copy code button).
-  - [ ] Render dynamic `ModelBadge` showing which model is actively answering (Llama, Qwen-Coder, Qwen-VL).
-- [ ] **File Drag & Drop in Chat (`FileUploadZone.tsx`):**
-  - [ ] Drag-and-drop file target in chat input.
-  - [ ] Call Amit's `POST /api/files/upload`, display attachment chips with thumbnails, and pass `file_ids`.
-- [ ] **Agent Reasoning Visualizer (`AgentStepCard.tsx`):**
-  - [ ] Accordion showing agent's real-time inner monologue:
-    - [ ] 📋 **Plan:** Goal breakdown.
-    - [ ] ⚙️ **Action:** Tool being executed with live spinner.
-    - [ ] 👁️ **Observation:** Tool output summary.
-    - [ ] 💡 **Reflection:** Task validation.
-- [ ] **Deliverable Download Card (`DeliverableCard.tsx`):**
-  - [ ] Render download card for generated `.docx` / `.xlsx` files with direct download button.
+- [x] **Frontend Foundation & Design System:**
+  - [x] Initialize `frontend/` with Next.js 15, Bun runtime, TypeScript, and Tailwind CSS.
+  - [x] Integrate Cult UI / shadcn components (Button, Input, Card, Badge, Accordion, ScrollArea, Tabs, Dialog).
+  - [x] Apply dark industrial refinery theme (slate `#090d16`, amber `#f59e0b`, emerald `#10b981`).
+  - [x] Build responsive root layout with collapsible navigation sidebar and top system status bar.
+- [x] **Interactive Streaming Chat (`/chat`):**
+  - [x] Conversational feed with auto-scroll and history loading.
+  - [x] Auto-expanding multiline prompt textarea with keyboard shortcuts (Enter to send, Shift+Enter for newline).
+  - [x] Conversation sidebar: create new conversation, switch active chat, delete chat.
+- [x] **Real-Time SSE Stream Consumer (`StreamConsumer.ts`):**
+  - [x] Implement `fetch` stream reader consuming `metadata`, `step`, `token`, and `done` events from Ankit's API.
+  - [x] Token-by-token markdown rendering (`react-markdown` + syntax highlighter + copy code button).
+  - [x] Render dynamic `ModelBadge` showing which model is actively answering (Llama, Qwen-Coder, Qwen-VL).
+- [x] **File Drag & Drop in Chat (`FileUploadZone.tsx`):**
+  - [x] Drag-and-drop file target in chat input.
+  - [x] Call Amit's `POST /api/files/upload`, display attachment chips with thumbnails, and pass `file_ids`.
+- [x] **Agent Reasoning Visualizer (`AgentStepCard.tsx`):**
+  - [x] Accordion showing agent's real-time inner monologue:
+    - [x] 📋 **Plan:** Goal breakdown.
+    - [x] ⚙️ **Action:** Tool being executed with live spinner.
+    - [x] 👁️ **Observation:** Tool output summary.
+    - [x] 💡 **Reflection:** Task validation.
+- [x] **Deliverable Download Card (`DeliverableCard.tsx`):**
+  - [x] Render download card for generated `.docx` / `.xlsx` files with direct download button.
 
 ---
 
