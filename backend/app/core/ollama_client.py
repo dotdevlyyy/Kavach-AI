@@ -47,13 +47,13 @@ class OllamaManager:
                         messages=[{"role": "user", "content": "hi"}],
                         keep_alive=-1,
                     ),
-                    timeout=60,
+                    timeout=300,
                 )
                 self._preloaded.add(model_name)
                 loaded.append(model_name)
                 logger.info(f"Model loaded and warm: {model_name}")
             except Exception as exc:
-                logger.error(f"Failed to preload model {model_name}: {exc}")
+                logger.error(f"Failed to preload model {model_name}: {type(exc).__name__} - {exc}")
 
         if settings.embed_model not in available:
             logger.error(f"Required local embedding model is missing: {settings.embed_model}")
@@ -61,10 +61,10 @@ class OllamaManager:
             try:
                 await asyncio.wait_for(
                     self.client.embed(model=settings.embed_model, input="warmup"),
-                    timeout=60,
+                    timeout=300,
                 )
             except Exception as exc:
-                logger.error(f"Failed to warm embedding model {settings.embed_model}: {exc}")
+                logger.error(f"Failed to warm embedding model {settings.embed_model}: {type(exc).__name__} - {exc}")
 
         return loaded
 

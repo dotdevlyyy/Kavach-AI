@@ -3,6 +3,7 @@
 import asyncio
 import os
 import shutil
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -26,27 +27,23 @@ def _result(success: bool, exit_code: int, stdout: str = "", stderr: str = "") -
 
 
 async def _image_is_local(docker: str) -> bool:
-    process = await asyncio.create_subprocess_exec(
-        docker,
-        "image",
-        "inspect",
-        SANDBOX_IMAGE,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    return await process.wait() == 0
+    def _run():
+        return subprocess.run(
+            [docker, "image", "inspect", SANDBOX_IMAGE],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    return await asyncio.to_thread(_run)
 
 
 async def _remove_container(docker: str, name: str) -> None:
-    process = await asyncio.create_subprocess_exec(
-        docker,
-        "rm",
-        "-f",
-        name,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    await process.wait()
+    def _run():
+        subprocess.run(
+            [docker, "rm", "-f", name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    await asyncio.to_thread(_run)
 
 
 async def execute_python_code(code: str, timeout: int = 30) -> dict[str, Any]:
@@ -105,24 +102,25 @@ async def execute_python_code(code: str, timeout: int = 30) -> dict[str, Any]:
         ]
 
         try:
-            with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
-                process = await asyncio.create_subprocess_exec(
-                    *command,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    env=os.environ.copy(),
+            def _run_docker():
+                with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+                    return subprocess.run(
+                        command,
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        env=os.environ.copy(),
+                        timeout=timeout,
+                    ).returncode
+
+            try:
+                exit_code = await asyncio.to_thread(_run_docker)
+            except subprocess.TimeoutExpired:
+                await _remove_container(docker, container_name)
+                return _result(
+                    False,
+                    -1,
+                    stderr=f"Execution timed out after {timeout} seconds.",
                 )
-                try:
-                    exit_code = await asyncio.wait_for(process.wait(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
-                    await _remove_container(docker, container_name)
-                    return _result(
-                        False,
-                        -1,
-                        stderr=f"Execution timed out after {timeout} seconds.",
-                    )
 
             if (
                 stdout_path.stat().st_size > MAX_OUTPUT_BYTES
