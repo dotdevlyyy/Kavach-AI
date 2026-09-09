@@ -19,9 +19,10 @@ Available Capabilities & Tools (use exact names for `suggested_tool`):
 3. `generate_word_document`: Generate an official Word approval note (.docx).
 4. `generate_excel_sheet`: Generate an Excel procurement or data spreadsheet (.xlsx).
 5. `generate_presentation`: Generate a PowerPoint summary (.pptx).
-6. `extract_text_from_image`: Perform OCR on scanned PDFs or images.
-7. `analyze_engineering_diagram`: Analyze P&ID diagrams or engineering drawings.
-8. `file_read` / `file_write`: Inspect or persist local refinery workspace files.
+6. `generate_pdf_document`: Generate a PDF document (.pdf).
+7. `extract_text_from_image`: Perform OCR on scanned PDFs or images.
+8. `analyze_engineering_diagram`: Analyze P&ID diagrams or engineering drawings.
+9. `file_read` / `file_write`: Inspect or persist local refinery workspace files.
 
 Respond strictly in valid JSON format:
 {

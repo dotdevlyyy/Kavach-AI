@@ -85,7 +85,8 @@ export default function ChatPage() {
     });
 
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const isAgentTask = message.toLowerCase().includes("plan") || message.toLowerCase().includes("execute");
+    const agentKeywords = ["plan", "execute", "generate", "create", "make a", "build a", "pdf", "word doc", "excel", "spreadsheet", "report", "presentation", "ppt", "docx"];
+    const isAgentTask = agentKeywords.some(kw => message.toLowerCase().includes(kw));
     const endpoint = isAgentTask ? `${apiBase}/api/agent/execute` : `${apiBase}/api/chat`;
     const payload = isAgentTask 
       ? { task_description: message, file_ids: fileIds, files: fileIds, max_steps: 10 } 

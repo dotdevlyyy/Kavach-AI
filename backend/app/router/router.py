@@ -85,6 +85,16 @@ async def route_request(
         uploads = await FileUpload.filter(id__in=file_ids)
         has_images = has_images or any(u.file_type == "image" for u in uploads)
         has_pdfs = has_pdfs or any(u.file_type == "pdf" for u in uploads)
+        if file_types is None:
+            file_types = []
+        file_types.extend([u.file_type for u in uploads])
+        
+        # Also grab original names for code extension heuristics
+        original_names = [u.original_name for u in uploads if u.original_name]
+        for name in original_names:
+            ext = name.split(".")[-1].lower() if "." in name else ""
+            if ext in ("py", "js", "ts", "cpp", "go", "rs", "java", "html", "css", "tsx", "jsx", "sh"):
+                file_types.append("code")
 
     # Step 1: Classify the task
     task_type, confidence, reasoning = classify_task(

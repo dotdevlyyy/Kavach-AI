@@ -89,3 +89,36 @@ def generate_presentation(title: str, slides_content: list) -> dict:
         return meta
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+@register_tool("generate_pdf_document")
+def generate_pdf_document(title: str, content: str, author: str = "Kavach AI") -> dict:
+    """Generate a formatted PDF document (.pdf).
+
+    Args:
+        title: Title of the document.
+        content: The main body text of the document.
+        author: Author of the document.
+    """
+    try:
+        from fpdf import FPDF
+        meta = _save("pdf", title)
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(0, 10, title, ln=True, align='C')
+        pdf.ln(10)
+        
+        pdf.set_font("Arial", 'I', 12)
+        pdf.cell(0, 10, f"Author: {author}", ln=True)
+        pdf.ln(5)
+        
+        pdf.set_font("Arial", '', 11)
+        # multi_cell automatically wraps text
+        pdf.multi_cell(0, 6, content)
+        
+        pdf.output(str(meta["path"]))
+        meta["status"] = "ok"
+        return meta
+    except Exception as e:
+        return {"status": "error", "error": str(e)}

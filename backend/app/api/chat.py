@@ -93,7 +93,43 @@ async def chat_stream_endpoint(request: ChatRequest):
             messages = [{"role": "system", "content": system_prompt}]
             for msg in history:
                 messages.append({"role": msg.role, "content": msg.content})
-            messages.append({"role": "user", "content": request.message})
+            user_content = request.message
+            user_images = []
+
+            if file_ids:
+                from app.models.file_upload import FileUpload
+                import base64
+                import os
+                
+                uploads = await FileUpload.filter(id__in=file_ids)
+                text_content = []
+                
+                for u in uploads:
+                    if not os.path.exists(u.stored_path):
+                        continue
+                        
+                    if u.file_type in ("txt", "md", "csv", "json", "py", "js", "ts", "html", "css", "cpp", "go", "rs") or "text" in u.mime_type or u.file_type == "code":
+                        try:
+                            with open(u.stored_path, "r", encoding="utf-8", errors="replace") as f:
+                                text_content.append(f"--- {u.original_name} ---\n{f.read()}\n")
+                        except Exception as e:
+                            logger.error(f"Failed to read text file {u.stored_path}: {e}")
+                    elif u.file_type == "image":
+                        try:
+                            with open(u.stored_path, "rb") as img_f:
+                                img_b64 = base64.b64encode(img_f.read()).decode("utf-8")
+                                user_images.append(img_b64)
+                        except Exception as e:
+                            logger.error(f"Failed to read image file {u.stored_path}: {e}")
+                            
+                if text_content:
+                    user_content += "\n\n[Attached Files]:\n" + "\n".join(text_content)
+
+            user_msg_payload = {"role": "user", "content": user_content}
+            if user_images:
+                user_msg_payload["images"] = user_images
+                
+            messages.append(user_msg_payload)
 
             # KB context injection: when flag is on, prepend top-K hybrid hits as a system message.
             # Skip the embedding call entirely when Ollama is unreachable — vector search would

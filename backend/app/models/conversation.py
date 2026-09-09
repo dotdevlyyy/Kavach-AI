@@ -14,6 +14,8 @@ class Conversation(models.Model):
     title = fields.CharField(max_length=500, default="New Conversation")
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
+    is_agent_mode = fields.BooleanField(default=False)
+    metadata = fields.JSONField(default=dict)
     model_override = fields.CharField(max_length=100, null=True)
     system_prompt = fields.TextField(null=True)
 

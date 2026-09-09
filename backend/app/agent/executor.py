@@ -17,7 +17,7 @@ import app.tools.ocr_extract     # noqa: F401
 import app.tools.image_analyze   # noqa: F401
 import app.rag.knowledge_search  # noqa: F401
 
-DOC_TOOLS = {"generate_word_document", "generate_excel_sheet", "generate_presentation"}
+DOC_TOOLS = {"generate_word_document", "generate_excel_sheet", "generate_presentation", "generate_pdf_document"}
 
 
 def _resolve_kwargs(func, tool_input: dict) -> dict:
