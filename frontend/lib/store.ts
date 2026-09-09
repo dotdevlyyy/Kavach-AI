@@ -9,7 +9,8 @@ export interface ChatMessage {
   content: string;
   model?: "llama3.2:1b" | "qwen2.5-coder:1.5b" | "qwen2.5vl:3b";
   steps?: AgentStep[];
-  deliverables?: any[];
+  deliverables?: { id: string; filename: string; type: string; url?: string; content?: string }[];
+  attachedFiles?: { id: string; name: string; type: string; url?: string }[];
 }
 
 export interface ChatSession {

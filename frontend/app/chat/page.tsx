@@ -8,8 +8,9 @@ import { DeliverableCard } from "@/components/agent/DeliverableCard";
 import { consumeSSEStream, uploadFiles, StreamEvent } from "@/lib/StreamConsumer";
 import { useChatStore } from "@/lib/store";
 import { v4 as uuidv4 } from 'uuid';
-import { GitBranch } from "lucide-react";
+import { GitBranch, FileCode2 } from "lucide-react";
 import { ChatWorkflowModal } from "@/components/chat/ChatWorkflowModal";
+import { ChatArtifactsModal } from "@/components/chat/ChatArtifactsModal";
 
 export default function ChatPage() {
   const activeChatId = useChatStore((state) => state.activeChatId);
@@ -30,7 +31,15 @@ export default function ChatPage() {
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
+  const [isArtifactsModalOpen, setIsArtifactsModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const allArtifacts = messages.flatMap(m => {
+    const userFiles = (m.attachedFiles || []).map(f => ({ id: f.id, name: f.name, type: f.type, origin: "user" as const }));
+    const agentFiles = (m.deliverables || []).map(f => ({ id: f.id, name: f.filename, type: f.type, origin: "agent" as const }));
+    return [...userFiles, ...agentFiles];
+  });
+  const hasArtifacts = allArtifacts.length > 0;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -45,15 +54,23 @@ export default function ChatPage() {
     const currentChatId = activeChatId;
 
     let fileIds: string[] = [];
+    let attachedFilesData: { id: string; name: string; type: string }[] = [];
     if (files.length > 0) {
       fileIds = await uploadFiles(files);
+      // Map the IDs back to the original files
+      attachedFilesData = files.map((file, i) => ({
+        id: fileIds[i] || uuidv4(),
+        name: file.name,
+        type: file.name.split('.').pop() || 'file'
+      }));
     }
 
     const userMsgId = uuidv4();
     addMessage(currentChatId, {
       id: userMsgId,
       role: "user",
-      content: message + (files.length > 0 ? `\n\n*[Attached ${files.length} files]*` : "")
+      content: message + (files.length > 0 ? `\n\n*[Attached ${files.length} files]*` : ""),
+      attachedFiles: attachedFilesData
     });
     
     setIsStreaming(true);
@@ -134,6 +151,8 @@ export default function ChatPage() {
 
   const hasUserMessage = messages.some((m: any) => m.role === "user");
 
+
+
   return (
     <div className="min-h-full flex flex-col bg-background text-foreground relative">
       <ChatWorkflowModal 
@@ -141,16 +160,34 @@ export default function ChatPage() {
         onOpenChange={setIsWorkflowModalOpen} 
         messages={messages} 
       />
+
+      <ChatArtifactsModal
+        open={isArtifactsModalOpen}
+        onOpenChange={setIsArtifactsModalOpen}
+        artifacts={allArtifacts}
+      />
       
-      {hasUserMessage && (
-        <button
-          onClick={() => setIsWorkflowModalOpen(true)}
-          className="fixed top-24 right-8 z-20 flex items-center gap-2 px-3 py-2 bg-card border border-border shadow-lg rounded-xl text-xs font-semibold hover:border-primary/50 text-foreground transition-colors"
-        >
-          <GitBranch className="w-4 h-4 text-primary" />
-          View Workflow Trace
-        </button>
-      )}
+      <div className="fixed top-24 right-8 z-20 flex flex-col gap-2">
+        {hasArtifacts && (
+          <button
+            onClick={() => setIsArtifactsModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-card border border-border shadow-lg rounded-xl text-xs font-semibold hover:border-primary/50 text-foreground transition-colors"
+          >
+            <FileCode2 className="w-4 h-4 text-emerald-500" />
+            Artifacts ({allArtifacts.length})
+          </button>
+        )}
+
+        {hasUserMessage && (
+          <button
+            onClick={() => setIsWorkflowModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-card border border-border shadow-lg rounded-xl text-xs font-semibold hover:border-primary/50 text-foreground transition-colors"
+          >
+            <GitBranch className="w-4 h-4 text-primary" />
+            View Workflow Trace
+          </button>
+        )}
+      </div>
 
       <div className="flex-1 p-6">
         <div className={`max-w-4xl mx-auto ${!hasUserMessage ? 'min-h-[calc(100vh-200px)] flex flex-col' : ''}`}>
@@ -206,7 +243,7 @@ export default function ChatPage() {
                           key={file.id} 
                           id={file.id} 
                           filename={file.filename} 
-                          type={file.type} 
+                          type={file.type as "docx" | "xlsx"} 
                         />
                       ))}
                     </div>
