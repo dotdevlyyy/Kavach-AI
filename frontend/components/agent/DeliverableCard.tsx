@@ -5,13 +5,14 @@ import { FileText, Table, Download } from "lucide-react";
 interface DeliverableCardProps {
   id: string;
   filename: string;
-  type: "docx" | "xlsx";
+  type: string;
   sizeBytes?: number;
 }
 
 export function DeliverableCard({ id, filename, type, sizeBytes }: DeliverableCardProps) {
   const isWord = type === "docx";
-  const Icon = isWord ? FileText : Table;
+  const isPdf = type === "pdf";
+  const Icon = isPdf ? FileText : (isWord ? FileText : Table);
   
   // Format bytes to KB/MB
   const formatSize = (bytes?: number) => {
@@ -30,7 +31,7 @@ export function DeliverableCard({ id, filename, type, sizeBytes }: DeliverableCa
   return (
     <div className="flex items-center justify-between p-3 my-2 bg-white shadow-sm border border-gray-200 rounded-lg max-w-sm hover:border-gray-300 transition-colors">
       <div className="flex items-center gap-3 overflow-hidden">
-        <div className={`p-2 rounded-md shrink-0 ${isWord ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}>
+        <div className={`p-2 rounded-md shrink-0 ${isPdf ? "bg-amber-50 text-amber-600" : (isWord ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600")}`}>
           <Icon className="w-6 h-6" />
         </div>
         <div className="flex flex-col min-w-0">

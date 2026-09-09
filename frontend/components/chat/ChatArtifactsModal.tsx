@@ -118,6 +118,14 @@ export function ChatArtifactsModal({ open, onOpenChange, artifacts }: ChatArtifa
                         <p>Image preview placeholder.<br/>(Preview rendering not currently wired to file blobs.)</p>
                       </div>
                     </div>
+                  ) : selectedArtifact.type.toLowerCase() === 'pdf' ? (
+                    <div className="w-full h-full max-w-5xl bg-card border border-border shadow-sm rounded-lg overflow-hidden">
+                      <iframe 
+                        src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/files/download/${selectedArtifact.id}`} 
+                        className="w-full h-full"
+                        title={selectedArtifact.name}
+                      />
+                    </div>
                   ) : (
                     <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg min-h-[60vh] p-8 font-mono text-sm text-foreground overflow-auto">
                       {selectedArtifact.content ? (

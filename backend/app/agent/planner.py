@@ -39,24 +39,34 @@ Respond strictly in valid JSON format:
 """
 
 
-_FALLBACK_PLAN: Dict[str, Any] = {
-    "goal": "",
-    "steps": [
-        {
-            "step_number": 1,
-            "title": "Analyze Task & Context",
-            "description": "Gather context and execute primary logic.",
-            "suggested_tool": "search_knowledge_base",
-        },
-        {
-            "step_number": 2,
-            "title": "Execute & Formulate Response",
-            "description": "Synthesize results and prepare finalized output/deliverable.",
-            "suggested_tool": "generate_word_document",
-        },
-    ],
-}
-
+def get_fallback_plan(task_description: str) -> Dict[str, Any]:
+    task_lower = task_description.lower()
+    if "pdf" in task_lower:
+        doc_tool = "generate_pdf_document"
+    elif "excel" in task_lower or "spreadsheet" in task_lower or "csv" in task_lower:
+        doc_tool = "generate_excel_sheet"
+    elif "presentation" in task_lower or "ppt" in task_lower:
+        doc_tool = "generate_presentation"
+    else:
+        doc_tool = "generate_word_document"
+        
+    return {
+        "goal": "Fulfill user request via fallback plan",
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "Analyze Task & Context",
+                "description": "Gather context and execute primary logic.",
+                "suggested_tool": "search_knowledge_base",
+            },
+            {
+                "step_number": 2,
+                "title": "Execute & Formulate Response",
+                "description": task_description,
+                "suggested_tool": doc_tool,
+            },
+        ],
+    }
 
 def _extract_json(text: str) -> Optional[Dict[str, Any]]:
     """Best-effort JSON extraction from noisy LLM output."""
@@ -97,17 +107,30 @@ def _normalize_plan(parsed: Dict[str, Any], task_description: str) -> Dict[str, 
     """Coerce parsed JSON into the expected plan shape, fixing minor issues."""
     steps = parsed.get("steps") or []
     normalized = []
+    task_lower = task_description.lower()
+    override_tool = None
+    if "pdf" in task_lower:
+        override_tool = "generate_pdf_document"
+    elif "excel" in task_lower or "spreadsheet" in task_lower or "csv" in task_lower:
+        override_tool = "generate_excel_sheet"
+    elif "presentation" in task_lower or "ppt" in task_lower:
+        override_tool = "generate_presentation"
+
     for i, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
             continue
+        tool = step.get("suggested_tool") or "none"
+        if override_tool and tool in {"generate_word_document", "generate_excel_sheet", "generate_presentation", "generate_pdf_document"}:
+            tool = override_tool
+            
         normalized.append({
-            "step_number": step.get("step_number") or i,
+            "step_number": i,
             "title": step.get("title") or f"Step {i}",
             "description": step.get("description") or "",
-            "suggested_tool": step.get("suggested_tool") or "none",
+            "suggested_tool": tool,
         })
     if not normalized:
-        return {**_FALLBACK_PLAN, "goal": task_description}
+        return get_fallback_plan(task_description)
     return {
         "goal": parsed.get("goal") or task_description,
         "steps": normalized,
@@ -152,7 +175,7 @@ class AgentPlanner:
 
         except Exception as e:
             logger.warning(f"Fallback to default plan generation due to parsing error: {e}")
-            return {**_FALLBACK_PLAN, "goal": task_description}
+            return get_fallback_plan(task_description)
 
 
 planner = AgentPlanner()

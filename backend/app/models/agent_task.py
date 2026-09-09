@@ -21,6 +21,7 @@ class AgentTask(models.Model):
     )
     result_summary = fields.TextField(null=True)
     output_files = fields.JSONField(default=list)
+    plan = fields.JSONField(default=dict)
     total_steps = fields.IntField(default=0)
     max_steps = fields.IntField(default=10)
     created_at = fields.DatetimeField(auto_now_add=True)

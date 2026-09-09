@@ -48,14 +48,21 @@ def _resolve_kwargs(func, tool_input: dict) -> dict:
                 out.pop("image_path", None)
                 break
 
-    # Fill the first required string param from `task` / `step_title` if not provided.
+    # Fill required string params using intelligent fallbacks
     required_str = [
         p for p in params
         if p.default is inspect.Parameter.empty
         and p.annotation in (str, inspect.Parameter.empty)
     ]
-    if required_str and not any(p.name in out for p in required_str):
-        out[required_str[0].name] = tool_input.get("task") or tool_input.get("step_title", "")
+    
+    for p in required_str:
+        if p.name not in out:
+            if p.name == "title":
+                out[p.name] = tool_input.get("step_title") or "Generated Document"
+            elif p.name == "content":
+                out[p.name] = tool_input.get("description") or tool_input.get("task") or "No content provided."
+            else:
+                out[p.name] = tool_input.get("task") or tool_input.get("step_title") or "Unknown"
 
     # Reject unknown keys — keeps the planner honest about tool signatures.
     # Meta keys (`task`, `step_title`) are agent-loop scaffolding, not planner output,
@@ -102,20 +109,28 @@ class AgentExecutor:
                 # Doc tools return a dict with file_id/path/filename/status.
                 # The file_id is the UUID assigned by the tool; download route
                 # scans OUTPUT_DIR as a fallback (no FileUpload row created).
-                if tool_name in DOC_TOOLS and isinstance(result, dict) and result.get("status") == "ok":
-                    return {
-                        "tool": tool_name,
-                        "success": True,
-                        "output": f"Generated {result['filename']}",
-                        "file_id": result["file_id"],
-                        "raw": result,
-                    }
+                if tool_name in DOC_TOOLS and isinstance(result, dict):
+                    if result.get("status") == "ok":
+                        return {
+                            "tool": tool_name,
+                            "success": True,
+                            "output": f"Generated {result['filename']}",
+                            "file_id": result["file_id"],
+                            "raw": result,
+                        }
+                    else:
+                        return {
+                            "tool": tool_name,
+                            "success": False,
+                            "output": f"Error: {result.get('error', 'Unknown doc generation error')}",
+                            "raw": result,
+                        }
 
                 # Other tools return strings
                 output = str(result)
                 return {
                     "tool": tool_name,
-                    "success": not output.startswith("Error"),
+                    "success": not output.startswith("Error") and not output.startswith("{'status': 'error'"),
                     "output": output,
                     "raw": result,
                 }

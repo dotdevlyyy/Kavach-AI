@@ -204,9 +204,9 @@ class AgentLoop:
         base_system = (
             conversation.system_prompt
             if conversation and getattr(conversation, "system_prompt", None)
-            else "You are Kavach AI, sovereign on-premise AI workbench for MRPL Refinery. Summarize the final solution clearly based on step observations."
+            else "You are Kavach AI, sovereign on-premise AI workbench. Summarize the final solution clearly based on step observations."
         )
-        system_prompt = f"{base_system}\nStep Results Context: {final_context}"
+        system_prompt = f"{base_system}\n\nExecution Results:\n{final_context}\n\nCRITICAL INSTRUCTION: If the execution results above indicate that a file or document was successfully generated, YOU MUST acknowledge it. DO NOT apologize or claim you cannot fulfill the request. Simply state that the requested file has been generated and is attached to the chat."
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": task_description}

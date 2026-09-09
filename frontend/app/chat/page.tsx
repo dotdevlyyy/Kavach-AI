@@ -129,10 +129,16 @@ export default function ChatPage() {
             }
             if (event.data.file_id) {
               if (!newMsg.deliverables) newMsg.deliverables = [];
+              const outputText = (event.data.tool_output || '').toLowerCase();
+              let fileType = 'docx';
+              if (outputText.includes('.pdf')) fileType = 'pdf';
+              else if (outputText.includes('.xlsx')) fileType = 'xlsx';
+              else if (outputText.includes('.pptx')) fileType = 'pptx';
+              
               newMsg.deliverables.push({
                 id: event.data.file_id,
                 filename: event.data.tool_output || event.data.file_id,
-                type: (event.data.tool_output || '').endsWith('.xlsx') ? 'xlsx' : 'docx'
+                type: fileType
               });
             }
             break;
