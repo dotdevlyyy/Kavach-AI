@@ -3,7 +3,8 @@ Kavach AI — ReAct Agent Observer
 Inspects step outputs and produces observation + reflection text.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 from loguru import logger
 
 
@@ -21,7 +22,10 @@ class AgentObserver:
                 "step_number": step_number,
                 "status": "failed",
                 "observation": f"Step #{step_number} encountered an error: {output}",
-                "reflection": f"Step #{step_number} failed. Proceeding to next step; the planner should adjust subsequent tool choices.",
+                "reflection": (
+                    f"Step #{step_number} failed. Failure recorded; "
+                    "continuing with remaining planned steps."
+                ),
             }
 
         return {

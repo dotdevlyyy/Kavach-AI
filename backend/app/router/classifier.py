@@ -11,40 +11,123 @@ import re
 
 from app.schemas.common import TaskType
 
-
 # ─── Keyword Sets ─────────────────────────────────────────────────────────
 
 CODE_KEYWORDS: set[str] = {
-    "code", "function", "class", "debug", "error", "bug", "script",
-    "python", "javascript", "typescript", "java", "sql", "html", "css",
-    "api", "endpoint", "database", "query", "algorithm", "regex",
-    "compile", "syntax", "variable", "loop", "array", "dict",
-    "import", "install", "pip", "npm", "git", "docker",
-    "refactor", "optimize", "test", "unittest", "pytest",
-    "def ", "class ", "return ", "if __name__",
-    "```python", "```js", "```sql", "```bash",
+    "code",
+    "function",
+    "class",
+    "debug",
+    "error",
+    "bug",
+    "script",
+    "python",
+    "javascript",
+    "typescript",
+    "java",
+    "sql",
+    "html",
+    "css",
+    "api",
+    "endpoint",
+    "database",
+    "query",
+    "algorithm",
+    "regex",
+    "compile",
+    "syntax",
+    "variable",
+    "loop",
+    "array",
+    "dict",
+    "import",
+    "install",
+    "pip",
+    "npm",
+    "git",
+    "docker",
+    "refactor",
+    "optimize",
+    "review",
+    "test",
+    "unittest",
+    "pytest",
+    "def ",
+    "class ",
+    "return ",
+    "if __name__",
+    "```python",
+    "```js",
+    "```sql",
+    "```bash",
 }
 
 VISION_KEYWORDS: set[str] = {
-    "image", "photo", "picture", "drawing", "diagram", "scan",
-    "scanned", "p&id", "pid", "isometric", "blueprint", "sketch",
-    "handwritten", "photograph", "screenshot", "chart", "graph",
-    "what do you see", "describe this", "read this", "extract from",
-    "ocr", "recognize", "identify in",
+    "image",
+    "photo",
+    "picture",
+    "drawing",
+    "diagram",
+    "scan",
+    "scanned",
+    "p&id",
+    "pid",
+    "isometric",
+    "blueprint",
+    "sketch",
+    "handwritten",
+    "photograph",
+    "screenshot",
+    "chart",
+    "graph",
+    "what do you see",
+    "describe this",
+    "read this",
+    "extract from",
+    "ocr",
+    "recognize",
+    "identify in",
 }
 
 DOCUMENT_KEYWORDS: set[str] = {
-    "draft", "write a", "compose", "prepare", "create a note",
-    "approval note", "memo", "letter", "report", "presentation",
-    "word doc", "docx", "excel", "xlsx", "pptx", "powerpoint",
-    "template", "format", "generate document",
+    "draft",
+    "write a",
+    "compose",
+    "prepare",
+    "create a note",
+    "approval note",
+    "memo",
+    "letter",
+    "report",
+    "presentation",
+    "word doc",
+    "docx",
+    "excel",
+    "xlsx",
+    "pptx",
+    "powerpoint",
+    "template",
+    "format",
+    "generate document",
 }
 
 SUMMARIZE_KEYWORDS: set[str] = {
-    "summarize", "summary", "key points", "main findings",
-    "brief", "overview", "tldr", "highlights", "gist",
-    "condense", "distill",
+    "summarize",
+    "summary",
+    "key points",
+    "main findings",
+    "brief",
+    "overview",
+    "tldr",
+    "highlights",
+    "gist",
+    "condense",
+    "distill",
 }
+
+SPREADSHEET_KEYWORDS: set[str] = {"spreadsheet", "excel", "xlsx", "csv", "workbook"}
+CODE_REVIEW_KEYWORDS: set[str] = {"review", "audit", "inspect"}
+CODE_DEBUG_KEYWORDS: set[str] = {"debug", "bug", "error", "exception", "traceback", "fix"}
 
 # Image file extensions for attachment-based classification
 IMAGE_EXTENSIONS: set[str] = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg"}
@@ -76,25 +159,43 @@ def classify_task(
     """
     message_lower = message.lower().strip()
     file_types = file_types or []
+    normalized_types = {file_type.lower().lstrip(".") for file_type in file_types}
     reasons: list[str] = []
 
     # ── Rule 1: Image attachments → Vision ─────────────────────────────
-    if has_images or any(ft.lower() in IMAGE_EXTENSIONS for ft in file_types):
+    if (
+        has_images
+        or "image" in normalized_types
+        or normalized_types & {extension.lstrip(".") for extension in IMAGE_EXTENSIONS}
+    ):
         reasons.append("Image file(s) attached")
         return TaskType.VISION, 0.95, "; ".join(reasons)
 
     # ── Rule 2: Scanned PDF + relevant keywords → OCR ──────────────────
-    if has_pdfs or any(ft.lower() == PDF_EXTENSION for ft in file_types):
+    if has_pdfs or "pdf" in normalized_types:
         ocr_hints = {"read", "extract", "scan", "ocr", "what", "text from"}
         if any(kw in message_lower for kw in ocr_hints):
             reasons.append("PDF attached with OCR-related keywords")
             return TaskType.OCR, 0.90, "; ".join(reasons)
+        return TaskType.DOCUMENT_ANALYSIS, 0.85, "PDF document attached"
+
+    if normalized_types & {"code", "py", "js", "ts", "tsx", "jsx", "java", "cpp", "go", "rs"}:
+        return TaskType.CODE_GENERATION, 0.95, "Code file attached"
+
+    if normalized_types & {"csv", "xlsx"}:
+        return TaskType.SPREADSHEET, 0.95, "Spreadsheet attached"
 
     # ── Rule 3: Keyword scoring ────────────────────────────────────────
-    code_score = sum(1 for kw in CODE_KEYWORDS if kw in message_lower)
-    vision_score = sum(1 for kw in VISION_KEYWORDS if kw in message_lower)
-    doc_score = sum(1 for kw in DOCUMENT_KEYWORDS if kw in message_lower)
-    summarize_score = sum(1 for kw in SUMMARIZE_KEYWORDS if kw in message_lower)
+    def matches(keyword: str) -> bool:
+        if keyword.strip() != keyword or any(symbol in keyword for symbol in "`_{}"):
+            return keyword in message_lower
+        return re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", message_lower) is not None
+
+    code_score = sum(1 for keyword in CODE_KEYWORDS if matches(keyword))
+    vision_score = sum(1 for keyword in VISION_KEYWORDS if matches(keyword))
+    doc_score = sum(1 for keyword in DOCUMENT_KEYWORDS if matches(keyword))
+    summarize_score = sum(1 for keyword in SUMMARIZE_KEYWORDS if matches(keyword))
+    spreadsheet_score = sum(1 for keyword in SPREADSHEET_KEYWORDS if matches(keyword))
 
     # ── Rule 4: Code block detection boost ─────────────────────────────
     if "```" in message or re.search(r"def\s+\w+|class\s+\w+|import\s+\w+", message):
@@ -107,21 +208,28 @@ def classify_task(
         TaskType.VISION: vision_score,
         TaskType.DOCUMENT_DRAFT: doc_score,
         TaskType.SUMMARIZATION: summarize_score,
+        TaskType.SPREADSHEET: spreadsheet_score,
     }
 
     max_type = max(scores, key=lambda k: scores[k])
     max_score = scores[max_type]
 
-    if max_score >= 1:
+    if max_score >= 2:
         # Find matched keywords for reasoning
         if max_type == TaskType.CODE_GENERATION:
-            matched = [kw for kw in CODE_KEYWORDS if kw in message_lower]
+            matched = [keyword for keyword in CODE_KEYWORDS if matches(keyword)]
+            if any(matches(keyword) for keyword in CODE_DEBUG_KEYWORDS):
+                max_type = TaskType.CODE_DEBUG
+            elif any(matches(keyword) for keyword in CODE_REVIEW_KEYWORDS):
+                max_type = TaskType.CODE_REVIEW
         elif max_type == TaskType.VISION:
             matched = [kw for kw in VISION_KEYWORDS if kw in message_lower]
         elif max_type == TaskType.DOCUMENT_DRAFT:
-            matched = [kw for kw in DOCUMENT_KEYWORDS if kw in message_lower]
+            matched = [keyword for keyword in DOCUMENT_KEYWORDS if matches(keyword)]
+        elif max_type == TaskType.SPREADSHEET:
+            matched = [keyword for keyword in SPREADSHEET_KEYWORDS if matches(keyword)]
         else:
-            matched = [kw for kw in SUMMARIZE_KEYWORDS if kw in message_lower]
+            matched = [keyword for keyword in SUMMARIZE_KEYWORDS if matches(keyword)]
 
         # Normalize confidence: score / (score + 2) gives diminishing returns curve
         confidence = min(max_score / (max_score + 2), 0.95)

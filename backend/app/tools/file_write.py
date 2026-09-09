@@ -1,4 +1,4 @@
-from app.core.paths import DATA_ROOT
+from app.core.paths import resolve_data_path
 from app.tools.registry import register_tool
 
 
@@ -10,8 +10,9 @@ def file_write(filepath: str, content: str) -> str:
         filepath: Path to the file, relative to backend/data/
         content: The text content to write to the file
     """
-    target = (DATA_ROOT / filepath).resolve()
-    if not str(target).startswith(str(DATA_ROOT)):
+    try:
+        target = resolve_data_path(filepath)
+    except ValueError:
         return "Error: Access denied. Cannot write outside of data directory."
 
     target.parent.mkdir(parents=True, exist_ok=True)

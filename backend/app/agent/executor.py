@@ -1,134 +1,148 @@
-"""
-Kavach AI — ReAct Agent Executor
-Dispatches individual step execution requests to the Tool Registry.
-"""
+"""Dispatch validated agent steps to registered tools."""
 
 import inspect
-from typing import Dict, Any
+import re
+from typing import Any
+
 from loguru import logger
-from app.tools.registry import execute_tool, _TOOL_REGISTRY
-from app.tools.code_execute import execute_python_code
 
-# Import tool modules so their @register_tool decorators fire at import time
-import app.tools.file_read       # noqa: F401
-import app.tools.file_write      # noqa: F401
-import app.tools.doc_generate    # noqa: F401
-import app.tools.ocr_extract     # noqa: F401
-import app.tools.image_analyze   # noqa: F401
 import app.rag.knowledge_search  # noqa: F401
+import app.tools.doc_generate  # noqa: F401
+import app.tools.file_read  # noqa: F401
+import app.tools.file_write  # noqa: F401
+import app.tools.image_analyze  # noqa: F401
+import app.tools.ocr_extract  # noqa: F401
+from app.tools.code_execute import execute_python_code
+from app.tools.registry import _TOOL_REGISTRY, execute_tool
 
-DOC_TOOLS = {"generate_word_document", "generate_excel_sheet", "generate_presentation", "generate_pdf_document"}
+DOC_TOOLS = {
+    "generate_word_document",
+    "generate_excel_sheet",
+    "generate_presentation",
+    "generate_pdf_document",
+}
+META_KEYS = {"task", "step_title"}
+
+
+async def _generate_text(task: str, model: str, instruction: str) -> str:
+    from app.core.ollama_client import ollama_client
+
+    chunks = []
+    async for chunk in ollama_client.chat_stream(
+        model=model,
+        messages=[{"role": "user", "content": f"{instruction}\n\nRequest: {task}"}],
+        keep_alive=-1,
+        options={"temperature": 0.2},
+    ):
+        chunks.append(
+            chunk.message.content
+            if hasattr(chunk, "message")
+            else chunk.get("message", {}).get("content", "")
+        )
+    return "".join(chunks).strip()
+
+
+async def _document_content(task: str, model: str) -> str:
+    try:
+        return (
+            await _generate_text(
+                task,
+                model,
+                "Write complete formatted content. Output only document content.",
+            )
+            or task
+        )
+    except Exception as exc:
+        logger.warning(f"Document content generation failed: {exc}")
+        return task or "No content provided."
 
 
 async def _resolve_kwargs(func, tool_input: dict, model: str = "llama3.2:1b") -> dict:
-    """Fill required string params from step context. Generic, no per-tool aliasing.
+    """Validate planner input and fill only documented, deterministic defaults."""
+    parameters = list(inspect.signature(func).parameters.values())
+    parameter_names = {parameter.name for parameter in parameters}
+    values = dict(tool_input)
+    if "file_path" in values and "image_path" in parameter_names:
+        values["image_path"] = values.pop("file_path")
+    elif "image_path" in values and "file_path" in parameter_names:
+        values["file_path"] = values.pop("image_path")
 
-    Validates that every input key matches a declared parameter (after file_path↔image_path
-    aliasing). Unknown keys fail loud — silent typo-swallowing let `filepath`/`file_path`
-    mismatches cascade into file_read on task text. See B12.
-    """
-    sig = inspect.signature(func)
-    params = list(sig.parameters.values())
-    param_names = {p.name for p in params}
-    out = dict(tool_input)
-
-    # vision tools accept either filepath or image_path — only one is required.
-    # Alias BEFORE required-str fill so an empty fill doesn't shadow the real value.
-    # Drop the source key after aliasing so the unknown-key check below only sees params.
-    if "file_path" in out and "image_path" not in out:
-        for p in params:
-            if p.name == "image_path":
-                out["image_path"] = out["file_path"]
-                out.pop("file_path", None)
-                break
-    elif "image_path" in out and "file_path" not in out:
-        for p in params:
-            if p.name == "file_path":
-                out["file_path"] = out["image_path"]
-                out.pop("image_path", None)
-                break
-
-    # Fill required string params using intelligent fallbacks
-    required_str = [
-        p for p in params
-        if p.default is inspect.Parameter.empty
-        and p.annotation in (str, inspect.Parameter.empty)
-    ]
-    
-    for p in required_str:
-        if p.name not in out:
-            if p.name == "title":
-                out[p.name] = tool_input.get("step_title") or "Generated Document"
-            elif p.name == "content":
-                # If this is a document tool, use the LLM to write the actual content!
-                task_desc = tool_input.get("task", "")
-                if func.__name__ in DOC_TOOLS and task_desc:
-                    try:
-                        from app.core.ollama_client import ollama_client
-                        prompt = f"Write the complete, formatted content for the following request: {task_desc}\n\nIMPORTANT: You are an enterprise document generator. Do NOT refuse to write the document. If it involves personal information, generate synthetic/placeholder data for it. Output ONLY the document content, no conversational filler."
-                        content_chunks = []
-                        async for chunk in ollama_client.chat_stream(
-                            model=model,
-                            messages=[{"role": "user", "content": prompt}]
-                        ):
-                            content_chunks.append(chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", ""))
-                        
-                        out[p.name] = "".join(content_chunks).strip() or task_desc
-                    except Exception as e:
-                        import traceback
-                        print(f"LLM doc gen failed: {e}\n{traceback.format_exc()}")
-                        out[p.name] = tool_input.get("description") or task_desc or "No content provided."
-                else:
-                    out[p.name] = tool_input.get("description") or task_desc or "No content provided."
-            else:
-                out[p.name] = tool_input.get("task") or tool_input.get("step_title") or "Unknown"
-
-    # Reject unknown keys — keeps the planner honest about tool signatures.
-    # Meta keys (`task`, `step_title`) are agent-loop scaffolding, not planner output,
-    # so they bypass the check.
-    META_KEYS = {"task", "step_title"}
-    unknown = set(out) - param_names - META_KEYS
+    unknown = set(values) - parameter_names - META_KEYS
     if unknown:
         raise ValueError(
             f"Unknown kwargs for {func.__name__}: {sorted(unknown)}. "
-            f"Declared params: {sorted(param_names)}"
+            f"Declared params: {sorted(parameter_names)}"
         )
 
-    return {p.name: out[p.name] for p in params if p.name in out}
+    task = str(tool_input.get("task", ""))
+    title = str(tool_input.get("step_title", "Generated Document"))
+    generated_content: str | None = None
+
+    for parameter in parameters:
+        if parameter.name in values or parameter.default is not inspect.Parameter.empty:
+            continue
+        if parameter.name == "title":
+            values[parameter.name] = title
+        elif parameter.name == "content":
+            generated_content = generated_content or await _document_content(task, model)
+            values[parameter.name] = generated_content
+        elif parameter.name == "headers":
+            values[parameter.name] = ["Content"]
+        elif parameter.name == "rows":
+            generated_content = generated_content or await _document_content(task, model)
+            values[parameter.name] = [[generated_content]]
+        elif parameter.name == "slides_content":
+            generated_content = generated_content or await _document_content(task, model)
+            values[parameter.name] = [{"title": title, "content": generated_content}]
+        elif parameter.annotation in (str, inspect.Parameter.empty):
+            values[parameter.name] = task or title
+        else:
+            raise ValueError(f"Missing required tool input: {parameter.name}")
+
+    return {
+        parameter.name: values[parameter.name]
+        for parameter in parameters
+        if parameter.name in values
+    }
 
 
 class AgentExecutor:
-    """Dispatches tool execution calls based on step recommendations."""
-
     async def execute_step(
         self,
         step_number: int,
         tool_name: str,
-        tool_input: Dict[str, Any],
-        model: str = "llama3.2:1b"
-    ) -> Dict[str, Any]:
-        """Execute a tool call and return a normalized result dict."""
+        tool_input: dict[str, Any],
+        model: str = "llama3.2:1b",
+    ) -> dict[str, Any]:
         logger.info(f"Executing step #{step_number} with tool: {tool_name}")
-
         try:
             if tool_name == "code_execute":
-                code = tool_input.get("code", "print('Kavach AI sandbox verification successful')")
-                res = await execute_python_code(code=code)
+                code = tool_input.get("code")
+                if not code:
+                    code = await _generate_text(
+                        str(tool_input.get("task", "")),
+                        model,
+                        "Write executable Python code for this request. Output code only.",
+                    )
+                    code = re.sub(r"^```(?:python)?\s*|\s*```$", "", code, flags=re.I)
+                if not code:
+                    return {
+                        "tool": tool_name,
+                        "success": False,
+                        "output": "Unable to generate code for execution.",
+                    }
+                result = await execute_python_code(code=code)
                 return {
-                    "tool": "code_execute",
-                    "success": res.get("success", False),
-                    "output": res.get("output", ""),
-                    "raw": res,
+                    "tool": tool_name,
+                    "success": result.get("success", False),
+                    "output": result.get("output", ""),
+                    "raw": result,
                 }
 
             if tool_name in _TOOL_REGISTRY:
                 func = _TOOL_REGISTRY[tool_name]
                 kwargs = await _resolve_kwargs(func, tool_input, model=model)
                 result = await execute_tool(tool_name, kwargs)
-
-                # Doc tools return a dict with file_id/path/filename/status.
-                # The file_id is the UUID assigned by the tool; download route
-                # scans OUTPUT_DIR as a fallback (no FileUpload row created).
                 if tool_name in DOC_TOOLS and isinstance(result, dict):
                     if result.get("status") == "ok":
                         return {
@@ -138,38 +152,40 @@ class AgentExecutor:
                             "file_id": result["file_id"],
                             "raw": result,
                         }
-                    else:
-                        return {
-                            "tool": tool_name,
-                            "success": False,
-                            "output": f"Error: {result.get('error', 'Unknown doc generation error')}",
-                            "raw": result,
-                        }
+                    return {
+                        "tool": tool_name,
+                        "success": False,
+                        "output": "Document generation failed.",
+                        "raw": result,
+                    }
 
-                # Other tools return strings
                 output = str(result)
                 return {
                     "tool": tool_name,
-                    "success": not output.startswith("Error") and not output.startswith("{'status': 'error'"),
+                    "success": not output.startswith("Error"),
                     "output": output,
                     "raw": result,
                 }
 
-            # Default: reasoning step with no external tool call
-            return {
-                "tool": tool_name or "none",
-                "success": True,
-                "output": f"Step #{step_number} reasoning and execution completed.",
-            }
+            if not tool_name or tool_name == "none":
+                return {
+                    "tool": "none",
+                    "success": True,
+                    "output": f"Step #{step_number} reasoning completed.",
+                }
 
-        except Exception as e:
-            logger.error(f"Error in step #{step_number} tool execution ({tool_name}): {e}")
             return {
                 "tool": tool_name,
                 "success": False,
-                "output": f"Error executing tool {tool_name}: {str(e)}",
+                "output": f"Unknown tool: {tool_name}",
+            }
+        except Exception as exc:
+            logger.exception(f"Tool execution failed for {tool_name}: {exc}")
+            return {
+                "tool": tool_name,
+                "success": False,
+                "output": f"Tool execution failed: {tool_name}",
             }
 
 
 executor = AgentExecutor()
-

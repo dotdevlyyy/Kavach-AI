@@ -4,7 +4,9 @@ Represents a single step in a ReAct agent execution.
 """
 
 import uuid
+
 from tortoise import fields, models
+
 from app.schemas.common import StepType
 
 

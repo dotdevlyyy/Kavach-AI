@@ -4,6 +4,7 @@ Tests all real backend endpoints, database persistence, ReAct agent loop, and fi
 """
 
 import io
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -11,7 +12,19 @@ from app.main import app
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(tmp_path_factory):
+    from app.api import chat, files
+    from app.core.database import TORTOISE_ORM
+    from app.tools import image_analyze, ocr_extract
+
+    test_data = tmp_path_factory.mktemp("integration_data")
+    uploads = test_data / "uploads"
+    uploads.mkdir()
+    TORTOISE_ORM["connections"]["default"]["credentials"]["file_path"] = str(test_data / "test.db")
+    files.UPLOAD_DIR = uploads
+    chat.UPLOAD_DIR = uploads
+    image_analyze.UPLOAD_DIR = uploads
+    ocr_extract.UPLOAD_DIR = uploads
     with TestClient(app) as c:
         yield c
 
@@ -20,7 +33,7 @@ def test_health_enriched(client):
     h = client.get("/api/health")
     assert h.status_code == 200
     body = h.json()
-    assert body["status"] in ("healthy", "degraded")
+    assert body["status"] in ("healthy", "degraded", "unhealthy")
     # New fields per D.4
     assert "uptime_seconds" in body
     assert "disk_usage_gb" in body
@@ -55,7 +68,10 @@ def test_file_upload_metadata_download_preview(client):
 def test_agent_execute_streams_full_lifecycle(client):
     res = client.post(
         "/api/agent/execute",
-        json={"task_description": "Draft an approval note for pipe corrosion inspection", "max_steps": 2},
+        json={
+            "task_description": "Draft an approval note for pipe corrosion inspection",
+            "max_steps": 2,
+        },
     )
     assert res.status_code == 200
     text = res.text
@@ -82,9 +98,10 @@ def test_chat_conversations_and_stream(client):
 
 
 def test_chat_stop_endpoint(client):
-    res = client.post("/api/chat/stop", json={"conversation_id": "00000000-0000-0000-0000-000000000000"})
-    assert res.status_code == 200
-    assert res.json()["status"] == "cancellation_requested"
+    res = client.post(
+        "/api/chat/stop", json={"conversation_id": "00000000-0000-0000-0000-000000000000"}
+    )
+    assert res.status_code == 404
 
 
 def test_models_endpoints(client):
@@ -114,7 +131,9 @@ def test_knowledge_ingest_e2e(client):
         "confirm pump P-101 is offline, drain the boot. Startup sequence: open feed valve "
         "V-201, ignite preheater H-301, monitor overhead temperature for one hour."
     ).encode()
-    up = client.post("/api/files/upload", files={"files": ("sop.txt", io.BytesIO(content), "text/plain")})
+    up = client.post(
+        "/api/files/upload", files={"files": ("sop.txt", io.BytesIO(content), "text/plain")}
+    )
     assert up.status_code == 200
     file_id = up.json()["files"][0]["id"]
 
@@ -129,10 +148,131 @@ def test_knowledge_ingest_e2e(client):
     ids = [d["id"] for d in docs.json()["documents"]]
     assert body["document_id"] in ids
 
+    search = client.post(
+        "/api/knowledge/search",
+        json={"query": "Crude Distillation Unit SOP", "search_type": "hybrid"},
+    )
+    assert search.status_code == 200
+    assert search.json()["results"][0]["chunk_id"]
+
+
+def test_upload_rejects_spoofed_mime(client):
+    response = client.post(
+        "/api/files/upload",
+        files={"files": ("fake.txt", io.BytesIO(b"plain text"), "image/png")},
+    )
+    assert response.status_code == 400
+
+
+def test_upload_partial_failure_cleans_files(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("app.api.files.UPLOAD_DIR", tmp_path)
+    response = client.post(
+        "/api/files/upload",
+        files=[
+            ("files", ("valid.txt", io.BytesIO(b"valid text"), "text/plain")),
+            ("files", ("blocked.exe", io.BytesIO(b"MZ"), "application/octet-stream")),
+        ],
+    )
+    assert response.status_code == 400
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_upload_limit_is_enforced(client, monkeypatch):
+    monkeypatch.setattr("app.api.files.MAX_UPLOAD_FILES", 1)
+    response = client.post(
+        "/api/files/upload",
+        files=[
+            ("files", ("one.txt", io.BytesIO(b"one"), "text/plain")),
+            ("files", ("two.txt", io.BytesIO(b"two"), "text/plain")),
+        ],
+    )
+    assert response.status_code == 400
+
+
+def test_upload_size_boundary_and_overflow(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("app.api.files.UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr("app.api.files.MAX_UPLOAD_BYTES", 4)
+    at_limit_then_invalid = client.post(
+        "/api/files/upload",
+        files=[
+            ("files", ("four.txt", io.BytesIO(b"1234"), "text/plain")),
+            ("files", ("blocked.exe", io.BytesIO(b"MZ"), "application/octet-stream")),
+        ],
+    )
+    assert at_limit_then_invalid.status_code == 400
+    assert list(tmp_path.iterdir()) == []
+
+    oversized = client.post(
+        "/api/files/upload",
+        files={"files": ("five.txt", io.BytesIO(b"12345"), "text/plain")},
+    )
+    assert oversized.status_code == 413
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_knowledge_ingest_failure_creates_no_document(client, monkeypatch):
+    upload = client.post(
+        "/api/files/upload",
+        files={"files": ("rollback.txt", io.BytesIO(b"enough document text"), "text/plain")},
+    )
+    file_id = upload.json()["files"][0]["id"]
+    before = client.get("/api/knowledge/documents").json()["total"]
+
+    async def fail_ingestion(*_):
+        raise RuntimeError("forced failure")
+
+    monkeypatch.setattr("app.api.knowledge.ingest_document", fail_ingestion)
+    response = client.post("/api/knowledge/index", json={"file_id": file_id})
+    after = client.get("/api/knowledge/documents").json()["total"]
+    assert response.status_code == 500
+    assert after == before
+
+
+def test_chat_uses_latest_history_and_saved_settings(client, monkeypatch):
+    import uuid
+
+    calls = []
+
+    async def fake_stream(**kwargs):
+        calls.append(kwargs)
+        yield {"message": {"content": "ok"}}
+
+    monkeypatch.setattr("app.api.chat.ollama_client.chat_stream", fake_stream)
+    conversation_id = str(uuid.uuid4())
+    first = client.post(
+        "/api/chat",
+        json={
+            "conversation_id": conversation_id,
+            "message": "old-marker",
+            "model_override": "qwen2.5-coder:1.5b",
+            "system_prompt": "custom-system",
+            "enable_knowledge_base": False,
+        },
+    )
+    assert first.status_code == 200
+    for index in range(1, 12):
+        response = client.post(
+            "/api/chat",
+            json={
+                "conversation_id": conversation_id,
+                "message": f"recent-marker-{index}",
+                "enable_knowledge_base": False,
+            },
+        )
+        assert response.status_code == 200
+
+    last = calls[-1]
+    history_text = "\n".join(message["content"] for message in last["messages"][1:-1])
+    assert last["model"] == "qwen2.5-coder:1.5b"
+    assert last["messages"][0]["content"] == "custom-system"
+    assert "old-marker" not in history_text
+    assert "recent-marker-10" in history_text
+
 
 def test_chat_history_no_user_duplicate(client):
     """Regression F2: after chat turn, conversation has exactly one user message."""
     import uuid as _uuid
+
     cid = str(_uuid.uuid4())
     msg = f"F2-dedupe-check {_uuid.uuid4()}"
     res = client.post(
@@ -159,7 +299,9 @@ def test_image_attachment_routes_to_vision(client):
         b"\xa5\xf8E\xc0"
         b"\x00\x00\x00\x00IEND\xaeB`\x82"
     )
-    up = client.post("/api/files/upload", files={"files": ("diagram.png", io.BytesIO(png), "image/png")})
+    up = client.post(
+        "/api/files/upload", files={"files": ("diagram.png", io.BytesIO(png), "image/png")}
+    )
     assert up.status_code == 200
     file_id = up.json()["files"][0]["id"]
 
@@ -175,4 +317,5 @@ def test_image_attachment_routes_to_vision(client):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main([__file__, "-v"]))

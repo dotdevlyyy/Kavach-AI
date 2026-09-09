@@ -2,17 +2,20 @@
 Kavach AI — Tool Registry
 Decorator-based registry for Agent tools.
 """
+
 import inspect
-from typing import Callable, Any, Dict
+from typing import Any, Callable, Dict
 
 _TOOL_REGISTRY: Dict[str, Callable] = {}
 
 
 def register_tool(name: str):
     """Register a callable as a named tool for the agent."""
+
     def decorator(func: Callable):
         _TOOL_REGISTRY[name] = func
         return func
+
     return decorator
 
 

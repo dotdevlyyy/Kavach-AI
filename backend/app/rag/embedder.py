@@ -4,7 +4,9 @@ Uses Ollama's embed API to generate vector embeddings for RAG chunks.
 """
 
 import array
+
 from loguru import logger
+
 from app.core.config import settings
 from app.core.ollama_client import ollama_client
 
@@ -23,6 +25,20 @@ async def generate_embedding(text: str) -> list[float]:
     except Exception as e:
         logger.error(f"Embedding generation error: {e}")
         return []
+
+
+async def generate_embeddings(texts: list[str]) -> list[list[float]]:
+    """Generate one embedding per input in a single request."""
+    if not texts:
+        return []
+    try:
+        embeddings = await ollama_client.embed_many(model=settings.embed_model, texts=texts)
+        if len(embeddings) != len(texts):
+            raise ValueError("Embedding count mismatch")
+        return embeddings
+    except Exception as e:
+        logger.error(f"Batch embedding generation error: {e}")
+        return [[] for _ in texts]
 
 
 def serialize_embedding(embedding: list[float]) -> bytes:

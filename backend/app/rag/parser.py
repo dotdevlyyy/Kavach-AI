@@ -1,12 +1,15 @@
-import os
 import csv
-import fitz  # PyMuPDF
+import os
+
 import docx
+import fitz  # PyMuPDF
+
 
 def parse_txt(file_path: str) -> str:
     """Reads and returns text from a .txt or .md file."""
-    with open(file_path, 'r', encoding='utf-8') as file:
+    with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
+
 
 def parse_pdf(file_path: str) -> str:
     """Extracts text from a PDF file using PyMuPDF."""
@@ -17,18 +20,21 @@ def parse_pdf(file_path: str) -> str:
     doc.close()
     return "\n".join(text_content)
 
+
 def parse_docx(file_path: str) -> str:
     """Extracts text from a Word document (.docx)."""
     doc = docx.Document(file_path)
     text_content = [paragraph.text for paragraph in doc.paragraphs]
     return "\n".join(text_content)
 
+
 def parse_csv(file_path: str) -> str:
     """Reads a CSV and returns it as pipe-separated rows (one chunk per row group)."""
-    with open(file_path, 'r', encoding='utf-8', newline='') as file:
+    with open(file_path, "r", encoding="utf-8", newline="") as file:
         reader = csv.reader(file)
         rows = [", ".join(row) for row in reader]
     return "\n".join(rows)
+
 
 def parse_document(file_path: str) -> str:
     """
@@ -40,13 +46,13 @@ def parse_document(file_path: str) -> str:
 
     _, ext = os.path.splitext(file_path.lower())
 
-    if ext in ['.txt', '.md']:
+    if ext in [".txt", ".md"]:
         return parse_txt(file_path)
-    elif ext == '.pdf':
+    elif ext == ".pdf":
         return parse_pdf(file_path)
-    elif ext == '.docx':
+    elif ext == ".docx":
         return parse_docx(file_path)
-    elif ext == '.csv':
+    elif ext == ".csv":
         return parse_csv(file_path)
     else:
         raise ValueError(f"Unsupported file type for parsing: {ext}")

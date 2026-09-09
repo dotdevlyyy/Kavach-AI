@@ -1,8 +1,10 @@
+import re
 import uuid
-from pathlib import Path
+
 from docx import Document
 from openpyxl import Workbook
 from pptx import Presentation
+
 from app.core.paths import OUTPUT_DIR
 from app.tools.registry import register_tool
 
@@ -10,7 +12,7 @@ from app.tools.registry import register_tool
 def _save(suffix: str, title: str) -> dict:
     """Build output path with UUID prefix and return metadata."""
     file_id = str(uuid.uuid4())
-    safe_title = title.replace(" ", "_").replace("/", "_") or "untitled"
+    safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title).strip("._-")[:100] or "untitled"
     filename = f"{file_id}_{safe_title}.{suffix}"
     return {"file_id": file_id, "filename": filename, "path": OUTPUT_DIR / filename}
 
@@ -50,7 +52,7 @@ def generate_excel_sheet(title: str, headers: list, rows: list) -> dict:
         meta = _save("xlsx", title)
         wb = Workbook()
         ws = wb.active
-        ws.title = title[:31]  # Excel titles max 31 chars
+        ws.title = re.sub(r"[\\/*?:\[\]]", "_", title)[:31] or "Sheet1"
         ws.append(headers)
         for row in rows:
             ws.append(row)
@@ -90,6 +92,7 @@ def generate_presentation(title: str, slides_content: list) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
 @register_tool("generate_pdf_document")
 def generate_pdf_document(title: str, content: str, author: str = "Kavach AI") -> dict:
     """Generate a formatted PDF document (.pdf).
@@ -101,24 +104,25 @@ def generate_pdf_document(title: str, content: str, author: str = "Kavach AI") -
     """
     try:
         from fpdf import FPDF
+
         meta = _save("pdf", title)
-        
+
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, title, ln=True, align='C')
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, title, ln=True, align="C")
         pdf.ln(10)
-        
-        pdf.set_font("Arial", 'I', 12)
+
+        pdf.set_font("Arial", "I", 12)
         pdf.cell(0, 10, f"Author: {author}", ln=True)
         pdf.ln(5)
-        
-        pdf.set_font("Arial", '', 11)
+
+        pdf.set_font("Arial", "", 11)
         # Clean unicode characters for FPDF's default Arial
-        clean_content = content.encode('latin-1', 'replace').decode('latin-1')
+        clean_content = content.encode("latin-1", "replace").decode("latin-1")
         # multi_cell automatically wraps text
         pdf.multi_cell(0, 6, clean_content)
-        
+
         pdf.output(str(meta["path"]))
         meta["status"] = "ok"
         return meta

@@ -3,16 +3,16 @@ Kavach AI — RAG Retriever
 Implements BM25 full-text search via SQLite FTS5 and vector similarity search.
 """
 
-from typing import List, Dict
-from loguru import logger
+from typing import Dict, List
+
 from tortoise import Tortoise
+
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.rag.embedder import deserialize_embedding
 
 
 async def _hydrate_batch(chunk_ids: list[str]) -> dict[str, dict]:
     """Single roundtrip: fetch all chunks + their documents for an id list."""
-    from app.models.document import Document
     chunks = await KnowledgeChunk.filter(id__in=chunk_ids).select_related("document")
     return {
         str(c.id): {
@@ -28,11 +28,11 @@ async def _hydrate_batch(chunk_ids: list[str]) -> dict[str, dict]:
 async def search_fts(query: str, limit: int = 5) -> List[Dict]:
     """Search knowledge chunks using SQLite FTS5 (BM25 ranking)."""
     conn = Tortoise.get_connection("default")
-    
+
     # Sanitize query for FTS5 to prevent syntax errors on special characters
-    safe_query = query.replace('"', ' ').replace("'", ' ')
+    safe_query = query.replace('"', " ").replace("'", " ")
     fts_query_str = f'"{safe_query}"'
-    
+
     rows = await conn.execute_query_dict(
         """
         SELECT chunk_id, content, document_name, rank
@@ -80,12 +80,14 @@ async def search_vector(query_embedding: list[float], limit: int = 5) -> List[Di
         if norm_a == 0 or norm_b == 0:
             continue
         similarity = dot / (norm_a * norm_b)
-        scored.append({
-            "id": str(chunk.id),
-            "content": chunk.content,
-            "score": similarity,
-            "source": "vector",
-        })
+        scored.append(
+            {
+                "id": str(chunk.id),
+                "content": chunk.content,
+                "score": similarity,
+                "source": "vector",
+            }
+        )
 
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored[:limit]
@@ -105,16 +107,19 @@ async def hybrid_search(query: str, limit: int = 5) -> List[Dict]:
     k = 60
     rrf_scores: Dict[str, float] = {}
     content_map: Dict[str, str] = {}
+    source_map: Dict[str, set[str]] = {}
 
     for rank, result in enumerate(fts_results):
         rid = result["id"]
         rrf_scores[rid] = rrf_scores.get(rid, 0) + 1.0 / (k + rank + 1)
         content_map[rid] = result["content"]
+        source_map.setdefault(rid, set()).add("fts5")
 
     for rank, result in enumerate(vec_results):
         rid = result["id"]
         rrf_scores[rid] = rrf_scores.get(rid, 0) + 1.0 / (k + rank + 1)
         content_map[rid] = result["content"]
+        source_map.setdefault(rid, set()).add("vector")
 
     sorted_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
     top_ids = sorted_ids[:limit]
@@ -122,12 +127,15 @@ async def hybrid_search(query: str, limit: int = 5) -> List[Dict]:
     out = []
     for rid in top_ids:
         meta = meta_map.get(rid, {})
-        out.append({
-            "chunk_id": meta.get("chunk_id", rid),
-            "document_id": meta.get("document_id", ""),
-            "document_name": meta.get("document_name", ""),
-            "content": content_map[rid],
-            "score": rrf_scores[rid],
-            "metadata": meta.get("metadata", {}),
-        })
+        out.append(
+            {
+                "chunk_id": meta.get("chunk_id", rid),
+                "document_id": meta.get("document_id", ""),
+                "document_name": meta.get("document_name", ""),
+                "content": content_map[rid],
+                "score": rrf_scores[rid],
+                "source": "fts5" if "fts5" in source_map[rid] else "vector",
+                "metadata": meta.get("metadata", {}),
+            }
+        )
     return out

@@ -11,33 +11,28 @@ Routing Table:
 
 from __future__ import annotations
 
-from app.schemas.common import TaskType, RoutingMetadata
 from app.router.classifier import classify_task
-
+from app.schemas.common import RoutingMetadata, TaskType
 
 # ─── Routing Table ────────────────────────────────────────────────────────
 
 ROUTING_TABLE: dict[TaskType, str] = {
     # General purpose tasks → Llama 3.2 (best general reasoning at 1B)
-    TaskType.GENERAL_CHAT:      "llama3.2:1b",
-    TaskType.SUMMARIZATION:     "llama3.2:1b",
-    TaskType.DOCUMENT_DRAFT:    "llama3.2:1b",
-
+    TaskType.GENERAL_CHAT: "llama3.2:1b",
+    TaskType.SUMMARIZATION: "llama3.2:1b",
+    TaskType.DOCUMENT_DRAFT: "llama3.2:1b",
     # Code tasks → Qwen2.5-Coder (specialized for code generation)
-    TaskType.CODE_GENERATION:   "qwen2.5-coder:1.5b",
-    TaskType.CODE_REVIEW:       "qwen2.5-coder:1.5b",
-    TaskType.CODE_DEBUG:        "qwen2.5-coder:1.5b",
-
+    TaskType.CODE_GENERATION: "qwen2.5-coder:1.5b",
+    TaskType.CODE_REVIEW: "qwen2.5-coder:1.5b",
+    TaskType.CODE_DEBUG: "qwen2.5-coder:1.5b",
     # Vision/OCR tasks → Qwen2.5-VL (multimodal vision-language)
-    TaskType.VISION:            "qwen2.5vl:3b",
-    TaskType.OCR:               "qwen2.5vl:3b",
+    TaskType.VISION: "qwen2.5vl:3b",
+    TaskType.OCR: "qwen2.5vl:3b",
     TaskType.DOCUMENT_ANALYSIS: "qwen2.5vl:3b",
-
     # Spreadsheet (uses code model to generate processing code)
-    TaskType.SPREADSHEET:       "qwen2.5-coder:1.5b",
-
+    TaskType.SPREADSHEET: "qwen2.5-coder:1.5b",
     # Unknown defaults to general
-    TaskType.UNKNOWN:           "llama3.2:1b",
+    TaskType.UNKNOWN: "llama3.2:1b",
 }
 
 # Model metadata for the /api/models endpoint
@@ -82,18 +77,32 @@ async def route_request(
     # Step 0: If file_ids given, resolve to has_images / has_pdfs in one query.
     if file_ids:
         from app.models.file_upload import FileUpload
+
         uploads = await FileUpload.filter(id__in=file_ids)
         has_images = has_images or any(u.file_type == "image" for u in uploads)
         has_pdfs = has_pdfs or any(u.file_type == "pdf" for u in uploads)
         if file_types is None:
             file_types = []
         file_types.extend([u.file_type for u in uploads])
-        
+
         # Also grab original names for code extension heuristics
         original_names = [u.original_name for u in uploads if u.original_name]
         for name in original_names:
             ext = name.split(".")[-1].lower() if "." in name else ""
-            if ext in ("py", "js", "ts", "cpp", "go", "rs", "java", "html", "css", "tsx", "jsx", "sh"):
+            if ext in (
+                "py",
+                "js",
+                "ts",
+                "cpp",
+                "go",
+                "rs",
+                "java",
+                "html",
+                "css",
+                "tsx",
+                "jsx",
+                "sh",
+            ):
                 file_types.append("code")
 
     # Step 1: Classify the task

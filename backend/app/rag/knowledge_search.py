@@ -1,5 +1,5 @@
-from app.tools.registry import register_tool
 from app.rag.retriever import hybrid_search
+from app.tools.registry import register_tool
 
 
 @register_tool("search_knowledge_base")

@@ -28,6 +28,9 @@ class CancellationRegistry:
         ev.set()
         return True
 
+    def contains(self, key: str) -> bool:
+        return key in self._events
+
     def clear(self, key: str) -> None:
         self._events.pop(key, None)
 

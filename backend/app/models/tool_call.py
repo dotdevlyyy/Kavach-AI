@@ -4,7 +4,9 @@ Represents a single tool invocation by the agent.
 """
 
 import uuid
+
 from tortoise import fields, models
+
 from app.schemas.common import ToolCallStatus
 
 
