@@ -4,6 +4,7 @@ Represents a chat conversation (multi-turn or agent mode).
 """
 
 import uuid
+
 from tortoise import fields, models
 
 
@@ -20,8 +21,8 @@ class Conversation(models.Model):
     system_prompt = fields.TextField(null=True)
 
     # Reverse relations
-    messages: fields.ReverseRelation["app.models.message.Message"]
-    agent_tasks: fields.ReverseRelation["app.models.agent_task.AgentTask"]
+    messages: fields.ReverseRelation["app.models.message.Message"]  # noqa: F821
+    agent_tasks: fields.ReverseRelation["app.models.agent_task.AgentTask"]  # noqa: F821
 
     class Meta:
         table = "conversations"

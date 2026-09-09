@@ -4,14 +4,15 @@ All enums used across the application and shared msgspec Structs.
 """
 
 import enum
-import msgspec
 
+import msgspec
 
 # ─── Enums ────────────────────────────────────────────────────────────────
 
 
 class TaskType(str, enum.Enum):
     """Types of tasks the model router can classify."""
+
     GENERAL_CHAT = "general_chat"
     CODE_GENERATION = "code_generation"
     CODE_REVIEW = "code_review"
@@ -27,6 +28,7 @@ class TaskType(str, enum.Enum):
 
 class ToolCallStatus(str, enum.Enum):
     """Status of a tool call execution."""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -35,6 +37,7 @@ class ToolCallStatus(str, enum.Enum):
 
 class AgentTaskStatus(str, enum.Enum):
     """Status of an agent task."""
+
     PLANNING = "planning"
     EXECUTING = "executing"
     COMPLETED = "completed"
@@ -44,6 +47,7 @@ class AgentTaskStatus(str, enum.Enum):
 
 class StepType(str, enum.Enum):
     """Types of agent steps in the ReAct loop."""
+
     PLAN = "plan"
     ACT = "act"
     OBSERVE = "observe"
@@ -55,7 +59,7 @@ class StepType(str, enum.Enum):
 
 class RoutingMetadata(msgspec.Struct):
     """Metadata about model routing decision, sent to frontend."""
+
     task_type: str
     confidence: float
     reasoning: str
-

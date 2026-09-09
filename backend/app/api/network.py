@@ -5,6 +5,8 @@ Provides real system network socket inspection using psutil.
 
 import asyncio
 import ipaddress
+from datetime import datetime, timedelta, timezone
+
 import psutil
 from fastapi import APIRouter, Query
 from loguru import logger
@@ -12,6 +14,10 @@ from loguru import logger
 from app.models.network_log import NetworkLog
 
 router = APIRouter(prefix="/api/network", tags=["network"])
+
+_last_connections: list[dict] = []
+_last_snapshot_at: datetime | None = None
+_last_collection_error: str | None = "not_collected"
 
 
 async def _periodic_snapshotter(interval_seconds: int = 30) -> None:
@@ -39,15 +45,17 @@ def is_local_address(ip_str: str) -> bool:
         ip_obj = ipaddress.ip_address(ip_str)
         return ip_obj.is_loopback or ip_obj.is_private or ip_obj.is_link_local
     except ValueError:
-        return True
+        return False
 
 
 def _snapshot_connections():
     """Return a list of dicts describing current psutil sockets."""
+    global _last_connections, _last_snapshot_at, _last_collection_error
     try:
         net_conns = psutil.net_connections(kind="inet")
     except Exception as e:
         logger.warning(f"psutil.net_connections error: {e}")
+        _last_collection_error = "collection_failed"
         return []
 
     pid_name_map: dict[int, str] = {}
@@ -64,20 +72,57 @@ def _snapshot_connections():
         laddr = f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else "0.0.0.0:0"
         if conn.raddr:
             raddr = f"{conn.raddr.ip}:{conn.raddr.port}"
+            try:
+                ipaddress.ip_address(conn.raddr.ip)
+            except ValueError:
+                _last_collection_error = "invalid_remote_address"
+                return []
             is_local = is_local_address(conn.raddr.ip)
         else:
             raddr = "LISTEN"
             is_local = True
         proto = "TCP" if conn.type == 1 else "UDP"
-        out.append({
-            "process": pid_name_map.get(conn.pid, "system") if conn.pid else "system",
-            "protocol": proto,
-            "local_address": laddr,
-            "remote_address": raddr,
-            "status": conn.status,
-            "is_local": is_local,
-        })
+        out.append(
+            {
+                "process": pid_name_map.get(conn.pid, "system") if conn.pid else "system",
+                "protocol": proto,
+                "local_address": laddr,
+                "remote_address": raddr,
+                "status": conn.status,
+                "is_local": is_local,
+            }
+        )
+    _last_connections = out
+    _last_snapshot_at = datetime.now(timezone.utc)
+    _last_collection_error = None
     return out
+
+
+def get_network_summary(refresh: bool = False) -> dict:
+    """Return latest trustworthy network verdict."""
+    connections = _snapshot_connections() if refresh else _last_connections
+    if _last_collection_error:
+        return {
+            "status": "unknown",
+            "is_air_gapped": None,
+            "local_count": 0,
+            "external_count": 0,
+            "timestamp": _last_snapshot_at.isoformat() if _last_snapshot_at else None,
+            "error": _last_collection_error,
+            "connections": [],
+        }
+
+    local_count = sum(1 for connection in connections if connection["is_local"])
+    external_count = len(connections) - local_count
+    return {
+        "status": "secure" if external_count == 0 else "external_connections_detected",
+        "is_air_gapped": external_count == 0,
+        "local_count": local_count,
+        "external_count": external_count,
+        "timestamp": _last_snapshot_at.isoformat() if _last_snapshot_at else None,
+        "error": None,
+        "connections": connections,
+    }
 
 
 async def _snapshot_to_db(connection_list: list[dict]) -> int:
@@ -96,6 +141,7 @@ async def _snapshot_to_db(connection_list: list[dict]) -> int:
     if not rows:
         return 0
     await NetworkLog.bulk_create(rows)
+    await NetworkLog.filter(timestamp__lt=datetime.now(timezone.utc) - timedelta(hours=24)).delete()
     return len(rows)
 
 
@@ -107,10 +153,8 @@ async def get_network_audit(persist: bool = Query(default=False)):
     Returns safe process and socket metadata without exposing credentials or system secrets.
     Pass ?persist=true to snapshot into NetworkLog.
     """
-    connection_list = _snapshot_connections()
-    local_count = sum(1 for c in connection_list if c["is_local"])
-    external_count = len(connection_list) - local_count
-    is_air_gapped = external_count == 0
+    summary = get_network_summary(refresh=True)
+    connection_list = summary["connections"]
 
     persisted = 0
     if persist:
@@ -121,10 +165,14 @@ async def get_network_audit(persist: bool = Query(default=False)):
 
     return {
         "total_connections": len(connection_list),
-        "local_connections_count": local_count,
-        "external_connections": external_count,
-        "is_air_gapped": is_air_gapped,
-        "air_gap_status": "100% SECURE" if is_air_gapped else "EXTERNAL WARNING",
+        "local_count": summary["local_count"],
+        "external_count": summary["external_count"],
+        "local_connections_count": summary["local_count"],
+        "external_connections": summary["external_count"],
+        "is_air_gapped": summary["is_air_gapped"],
+        "air_gap_status": summary["status"],
+        "monitor_error": summary["error"],
+        "timestamp": summary["timestamp"],
         "persisted_rows": persisted,
         "connections": connection_list[:20],
     }

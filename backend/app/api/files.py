@@ -3,22 +3,31 @@ Kavach AI — File Upload/Download API
 Endpoints for uploading files, retrieving metadata, and downloading.
 """
 
+import mimetypes
 import os
 import uuid
-import mimetypes
 from pathlib import Path
 from typing import List
+from uuid import UUID
 
 import msgspec.json
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from loguru import logger
 
-from app.core.paths import UPLOAD_DIR, OUTPUT_DIR
+from app.core.paths import OUTPUT_DIR, UPLOAD_DIR
 from app.models.file_upload import FileUpload
 from app.schemas.files import FileUploadResponse, UploadedFile
 
 router = APIRouter(prefix="/api/files", tags=["Files"])
+
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_UPLOAD_FILES = 10
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+DOCUMENT_TYPES = {"pdf", "docx", "xlsx", "csv", "txt", "md", "json"}
+IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff"}
+CODE_EXTENSIONS = {"py", "js", "ts", "tsx", "jsx", "html", "css", "cpp", "go", "rs", "java", "sh"}
+ALLOWED_EXTENSIONS = DOCUMENT_TYPES | IMAGE_EXTENSIONS | CODE_EXTENSIONS
 
 
 def _msgspec_response(content, status_code: int = 200) -> Response:
@@ -33,21 +42,70 @@ def _msgspec_response(content, status_code: int = 200) -> Response:
 def get_file_type(filename: str, mime_type: str) -> str:
     """Classify file type from filename extension or mime type."""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext in ("pdf", "docx", "xlsx", "csv", "txt", "md", "json"):
+    if ext in DOCUMENT_TYPES:
         return ext
-    if mime_type.startswith("image/"):
+    if ext in IMAGE_EXTENSIONS and mime_type.startswith("image/"):
         return "image"
-    if mime_type.startswith("text/"):
-        return "txt"
+    if ext in CODE_EXTENSIONS:
+        return "code"
     return "other"
 
 
-def _resolve_output_path(file_id: str) -> Path | None:
+def _resolve_output_path(file_id: UUID) -> Path | None:
     """Scan OUTPUT_DIR for an agent-generated file whose name starts with file_id."""
-    for p in OUTPUT_DIR.glob(f"{file_id}_*"):
+    for p in OUTPUT_DIR.glob(f"{str(file_id)}_*"):
         if p.is_file():
             return p
     return None
+
+
+def _normalized_filename(filename: str | None) -> str:
+    name = (filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if not name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if len(name) > 500:
+        raise HTTPException(status_code=400, detail="Filename too long")
+    return name
+
+
+def _validate_upload_header(extension: str, header: bytes) -> None:
+    signatures = {
+        "pdf": (b"%PDF-",),
+        "png": (b"\x89PNG\r\n\x1a\n",),
+        "jpg": (b"\xff\xd8\xff",),
+        "jpeg": (b"\xff\xd8\xff",),
+        "gif": (b"GIF87a", b"GIF89a"),
+        "bmp": (b"BM",),
+        "webp": (b"RIFF",),
+        "tif": (b"II*\x00", b"MM\x00*"),
+        "tiff": (b"II*\x00", b"MM\x00*"),
+        "docx": (b"PK",),
+        "xlsx": (b"PK",),
+    }
+    expected = signatures.get(extension)
+    if expected and not any(header.startswith(prefix) for prefix in expected):
+        raise HTTPException(status_code=400, detail="File content does not match extension")
+    if extension in ({"txt", "md", "csv", "json"} | CODE_EXTENSIONS) and b"\x00" in header:
+        raise HTTPException(status_code=400, detail="Text file contains binary content")
+
+
+def _validate_mime_type(extension: str, mime_type: str) -> None:
+    """Reject a declared media type that contradicts the filename."""
+    mime_type = mime_type.lower().split(";", 1)[0].strip()
+    if mime_type == "application/octet-stream":
+        return
+    if extension in IMAGE_EXTENSIONS and mime_type.startswith("image/"):
+        return
+    allowed = {
+        "pdf": {"application/pdf"},
+        "docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+        "xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        "json": {"application/json", "text/json"},
+    }
+    if extension in ({"txt", "md", "csv"} | CODE_EXTENSIONS) and mime_type.startswith("text/"):
+        return
+    if mime_type not in allowed.get(extension, set()):
+        raise HTTPException(status_code=400, detail="File content type does not match extension")
 
 
 TEXT_PREVIEW_TYPES = {"txt", "csv", "md", "json"}
@@ -57,59 +115,94 @@ TEXT_PREVIEW_BYTES = 4096
 @router.post("/upload")
 async def upload_files(
     files: List[UploadFile] = File(...),
-    conversation_id: str | None = Form(default=None),
+    conversation_id: UUID | None = Form(default=None),
 ):
     """POST /api/files/upload — Upload one or more files."""
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_UPLOAD_FILES} files per upload")
+
     uploaded_files = []
+    committed: list[tuple[FileUpload, Path]] = []
 
-    for file in files:
-        file_id = str(uuid.uuid4())
-        safe_filename = f"{file_id}_{file.filename}"
-        file_path = UPLOAD_DIR / safe_filename
-        # Atomic write: stage to a temp path, rename after DB insert succeeds.
-        # Otherwise a failed DB row leaves an orphan file the user can never reference.
-        staged_path = UPLOAD_DIR / f".staging_{file_id}_{uuid.uuid4().hex}"
+    try:
+        for file in files:
+            file_id = str(uuid.uuid4())
+            original_name = _normalized_filename(file.filename)
+            extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+            if extension not in ALLOWED_EXTENSIONS:
+                raise HTTPException(status_code=400, detail="Unsupported file type")
 
-        content = await file.read()
-        mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
-        file_type = get_file_type(file.filename or "", mime_type)
-
-        with open(staged_path, "wb") as f:
-            f.write(content)
-
-        try:
-            db_file = await FileUpload.create(
-                id=file_id,
-                conversation_id=conversation_id,
-                original_name=file.filename or "unnamed",
-                stored_path=str(file_path),
-                file_type=file_type,
-                file_size=len(content),
-                mime_type=mime_type,
+            mime_type = (
+                file.content_type
+                or mimetypes.guess_type(original_name)[0]
+                or "application/octet-stream"
             )
-            os.rename(staged_path, file_path)
-        except Exception:
-            staged_path.unlink(missing_ok=True)
-            raise
+            _validate_mime_type(extension, mime_type)
+            file_type = get_file_type(original_name, mime_type)
+            if file_type == "other":
+                raise HTTPException(
+                    status_code=400, detail="File content type does not match extension"
+                )
 
-        uploaded_files.append(
-            UploadedFile(
-                id=str(db_file.id),
-                original_name=db_file.original_name,
-                file_type=db_file.file_type,
-                file_size=db_file.file_size,
-                mime_type=db_file.mime_type,
+            safe_filename = f"{file_id}.{extension}"
+            file_path = UPLOAD_DIR / safe_filename
+            staged_path = UPLOAD_DIR / f".staging_{file_id}_{uuid.uuid4().hex}"
+
+            try:
+                size = 0
+                header = b""
+                with open(staged_path, "wb") as staged:
+                    while chunk := await file.read(UPLOAD_CHUNK_BYTES):
+                        size += len(chunk)
+                        if size > MAX_UPLOAD_BYTES:
+                            raise HTTPException(status_code=413, detail="Max file size: 20 MB")
+                        if not header:
+                            header = chunk[:32]
+                        staged.write(chunk)
+                _validate_upload_header(extension, header)
+                os.replace(staged_path, file_path)
+
+                db_file = await FileUpload.create(
+                    id=file_id,
+                    conversation_id=str(conversation_id) if conversation_id else None,
+                    original_name=original_name,
+                    stored_path=str(file_path),
+                    file_type=file_type,
+                    file_size=size,
+                    mime_type=mime_type,
+                )
+                committed.append((db_file, file_path))
+            except Exception:
+                staged_path.unlink(missing_ok=True)
+                file_path.unlink(missing_ok=True)
+                raise
+
+            uploaded_files.append(
+                UploadedFile(
+                    id=str(db_file.id),
+                    original_name=db_file.original_name,
+                    file_type=db_file.file_type,
+                    file_size=db_file.file_size,
+                    mime_type=db_file.mime_type,
+                )
             )
-        )
-        logger.info(f"Saved file {file.filename} as {file_id}")
+            logger.info(f"Saved file {original_name} as {file_id}")
+    except Exception:
+        for db_file, path in committed:
+            try:
+                await db_file.delete()
+            except Exception as exc:
+                logger.error(f"Failed to roll back upload row {db_file.id}: {exc}")
+            path.unlink(missing_ok=True)
+        raise
 
     return _msgspec_response(FileUploadResponse(files=uploaded_files))
 
 
 @router.get("/download/{file_id}")
-async def download_file(file_id: str):
+async def download_file(file_id: UUID):
     """GET /api/files/download/{id} — Download a file (user upload OR agent-generated doc)."""
-    db_file = await FileUpload.get_or_none(id=file_id)
+    db_file = await FileUpload.get_or_none(id=str(file_id))
     if db_file and os.path.exists(db_file.stored_path):
         return FileResponse(
             path=db_file.stored_path,
@@ -120,7 +213,11 @@ async def download_file(file_id: str):
     # Agent-generated docs: no FileUpload row, scan OUTPUT_DIR.
     output_path = _resolve_output_path(file_id)
     if output_path:
-        mime_type = "application/pdf" if output_path.suffix.lower() == ".pdf" else "application/octet-stream"
+        mime_type = (
+            "application/pdf"
+            if output_path.suffix.lower() == ".pdf"
+            else "application/octet-stream"
+        )
         return FileResponse(
             path=str(output_path),
             filename=output_path.name,
@@ -132,9 +229,9 @@ async def download_file(file_id: str):
 
 
 @router.get("/{file_id}")
-async def get_file_metadata(file_id: str):
+async def get_file_metadata(file_id: UUID):
     """GET /api/files/{id} — Retrieve file metadata."""
-    db_file = await FileUpload.get_or_none(id=file_id)
+    db_file = await FileUpload.get_or_none(id=str(file_id))
     if db_file:
         return _msgspec_response(
             UploadedFile(
@@ -155,7 +252,7 @@ async def get_file_metadata(file_id: str):
             size = 0
         return _msgspec_response(
             UploadedFile(
-                id=file_id,
+                id=str(file_id),
                 original_name=output_path.name,
                 file_type=output_path.suffix.lstrip(".").lower(),
                 file_size=size,
@@ -167,12 +264,12 @@ async def get_file_metadata(file_id: str):
 
 
 @router.get("/{file_id}/preview")
-async def preview_file(file_id: str):
+async def preview_file(file_id: UUID):
     """
     GET /api/files/{id}/preview
     Text preview (first 4 KB) for text-like files; image preview URL otherwise.
     """
-    db_file = await FileUpload.get_or_none(id=file_id)
+    db_file = await FileUpload.get_or_none(id=str(file_id))
     stored_path = db_file.stored_path if db_file else None
     if not stored_path:
         output_path = _resolve_output_path(file_id)
@@ -180,7 +277,7 @@ async def preview_file(file_id: str):
             raise HTTPException(status_code=404, detail="File not found")
         # Generated docs aren't text-previewable; surface the download URL instead.
         return {
-            "id": file_id,
+            "id": str(file_id),
             "file_type": output_path.suffix.lstrip(".").lower() or "other",
             "preview_kind": "unsupported",
             "download_url": f"/api/files/download/{file_id}",
@@ -205,7 +302,8 @@ async def preview_file(file_id: str):
                 "truncated": len(raw) >= TEXT_PREVIEW_BYTES,
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Preview failed: {e}")
+            logger.exception(f"Preview failed for {file_id}: {e}")
+            raise HTTPException(status_code=500, detail="Preview failed")
 
     if db_file.file_type == "image":
         return {
@@ -221,4 +319,3 @@ async def preview_file(file_id: str):
         "preview_kind": "unsupported",
         "download_url": f"/api/files/download/{file_id}",
     }
-

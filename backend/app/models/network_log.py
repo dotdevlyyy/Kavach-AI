@@ -10,7 +10,7 @@ class NetworkLog(models.Model):
     """A log entry recording a network connection snapshot for sovereignty audit."""
 
     id = fields.IntField(pk=True)  # Auto-increment
-    timestamp = fields.DatetimeField(auto_now_add=True)
+    timestamp = fields.DatetimeField(auto_now_add=True, index=True)
     local_addr = fields.CharField(max_length=100)
     remote_addr = fields.CharField(max_length=100)
     protocol = fields.CharField(max_length=10)

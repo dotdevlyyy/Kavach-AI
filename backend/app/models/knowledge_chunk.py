@@ -4,6 +4,7 @@ Represents a text chunk from a document stored in the knowledge base.
 """
 
 import uuid
+
 from tortoise import fields, models
 
 

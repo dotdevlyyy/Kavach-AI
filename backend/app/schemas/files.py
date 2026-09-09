@@ -8,6 +8,7 @@ import msgspec
 
 class UploadedFile(msgspec.Struct):
     """Metadata for a single uploaded file."""
+
     id: str
     original_name: str
     file_type: str
@@ -17,4 +18,5 @@ class UploadedFile(msgspec.Struct):
 
 class FileUploadResponse(msgspec.Struct):
     """Response for POST /api/files/upload."""
+
     files: list[UploadedFile]

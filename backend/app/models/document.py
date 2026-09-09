@@ -4,6 +4,7 @@ Represents a document indexed into the knowledge base.
 """
 
 import uuid
+
 from tortoise import fields, models
 
 
@@ -21,7 +22,7 @@ class Document(models.Model):
     created_at = fields.DatetimeField(auto_now_add=True)
 
     # Reverse relations
-    chunks: fields.ReverseRelation["app.models.knowledge_chunk.KnowledgeChunk"]
+    chunks: fields.ReverseRelation["app.models.knowledge_chunk.KnowledgeChunk"]  # noqa: F821
 
     class Meta:
         table = "documents"

@@ -4,10 +4,9 @@ Endpoints for listing available models and currently loaded (VRAM) models.
 """
 
 from fastapi import APIRouter
-from loguru import logger
 
 from app.core.ollama_client import ollama_client
-from app.router.router import ROUTING_TABLE, MODEL_INFO
+from app.router.router import MODEL_INFO, ROUTING_TABLE
 
 router = APIRouter(prefix="/api/models", tags=["Models"])
 
@@ -27,15 +26,17 @@ async def list_models():
             continue
         seen.add(model_name)
         info = MODEL_INFO.get(model_name, {})
-        models.append({
-            "name": model_name,
-            "purpose": info.get("purpose", ""),
-            "task_types": info.get("task_types", []),
-            "size_gb": info.get("size_gb", 0.0),
-            "is_loaded": model_name in loaded_names,
-            "parameters": info.get("parameters", ""),
-            "quantization": info.get("quantization", "Q4_K_M"),
-        })
+        models.append(
+            {
+                "name": model_name,
+                "purpose": info.get("purpose", ""),
+                "task_types": info.get("task_types", []),
+                "size_gb": info.get("size_gb", 0.0),
+                "is_loaded": model_name in loaded_names,
+                "parameters": info.get("parameters", ""),
+                "quantization": info.get("quantization", "Q4_K_M"),
+            }
+        )
 
     return {"models": models, "count": len(models)}
 

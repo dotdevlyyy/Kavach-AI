@@ -1,4 +1,4 @@
-from app.core.paths import DATA_ROOT
+from app.core.paths import resolve_data_path
 from app.tools.registry import register_tool
 
 
@@ -9,8 +9,9 @@ def file_read(filepath: str) -> str:
     Args:
         filepath: Path to the file, relative to backend/data/
     """
-    target = (DATA_ROOT / filepath).resolve()
-    if not str(target).startswith(str(DATA_ROOT)):
+    try:
+        target = resolve_data_path(filepath)
+    except ValueError:
         return "Error: Access denied. Cannot read outside of data directory."
 
     if not target.exists():

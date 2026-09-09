@@ -1,20 +1,43 @@
 import base64
 from pathlib import Path
-from app.core.paths import DATA_ROOT
-from app.tools.registry import register_tool
+
+import fitz
+
 from app.core.ollama_client import ollama_client
+from app.core.paths import UPLOAD_DIR, resolve_data_path, resolve_within
+from app.tools.registry import register_tool
 
 
 async def _resolve_path(file_id: str | None, filepath: str | None) -> Path | None:
     """Resolve a tool input (file_id or filepath) to an absolute path."""
     if file_id:
         from app.models.file_upload import FileUpload
+
         upload = await FileUpload.get_or_none(id=file_id)
         if upload and upload.stored_path:
-            return Path(upload.stored_path)
+            try:
+                return resolve_within(UPLOAD_DIR, Path(upload.stored_path))
+            except ValueError:
+                return None
     if filepath:
-        return (DATA_ROOT / filepath).resolve()
+        try:
+            return resolve_data_path(filepath)
+        except ValueError:
+            return None
     return None
+
+
+def _image_payloads(target: Path) -> list[str]:
+    """Return image payloads; render PDFs page-by-page for vision OCR."""
+    if target.suffix.lower() != ".pdf":
+        return [base64.b64encode(target.read_bytes()).decode("utf-8")]
+
+    payloads = []
+    with fitz.open(target) as document:
+        for page in document:
+            png = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).tobytes("png")
+            payloads.append(base64.b64encode(png).decode("utf-8"))
+    return payloads
 
 
 @register_tool("extract_text_from_image")
@@ -30,20 +53,23 @@ async def extract_text_from_image(filepath: str = "", file_id: str = "") -> str:
         return f"Error: Image {file_id or filepath} not found."
 
     try:
-        with open(target, "rb") as f:
-            b64_image = base64.b64encode(f.read()).decode("utf-8")
-
-        response = await ollama_client.chat(
-            model="qwen2.5vl:3b",
-            messages=[
-                {
-                    "role": "user",
-                    "content": "Extract all text from this image exactly as written. Do not add any commentary.",
-                    "images": [b64_image]
-                }
-            ],
-            keep_alive=-1,
-        )
-        return response.message.content
-    except Exception as e:
-        return f"Error extracting text: {str(e)}"
+        pages = []
+        for page_number, image in enumerate(_image_payloads(target), start=1):
+            response = await ollama_client.chat(
+                model="qwen2.5vl:3b",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Extract all text from this image exactly as written. "
+                            "Do not add commentary."
+                        ),
+                        "images": [image],
+                    }
+                ],
+                keep_alive=-1,
+            )
+            pages.append(f"[Page {page_number}]\n{response.message.content}")
+        return "\n\n".join(pages)
+    except Exception:
+        return "Error extracting text from image."

@@ -1,90 +1,68 @@
-"""
-Kavach AI — ReAct Agent Master Execution Loop
-Orchestrates Plan -> Act -> Observe -> Reflect agent workflow with SSE streaming.
-"""
+"""ReAct agent execution loop with bounded work and truthful status."""
 
-import uuid
 import asyncio
 import time
+import uuid
 from datetime import datetime, timezone
-from typing import AsyncGenerator, List, Optional, Dict, Any
+from typing import AsyncGenerator
+
 from loguru import logger
 
-from app.core.sse import sse
-from app.router.router import route_request
-from app.agent.planner import planner
 from app.agent.executor import executor
 from app.agent.observer import observer
+from app.agent.planner import get_fallback_plan, planner
 from app.core.ollama_client import ollama_client
-from app.models.conversation import Conversation
-from app.models.agent_task import AgentTask
+from app.core.sse import sse
 from app.models.agent_step import AgentStep
+from app.models.agent_task import AgentTask
+from app.models.conversation import Conversation
 from app.models.tool_call import ToolCall, ToolCallStatus
+from app.router.router import route_request
 from app.schemas.common import AgentTaskStatus, StepType
+
+PER_STEP_SECONDS = 60
+PER_TASK_SECONDS = 300
+VISION_TOOLS = {"extract_text_from_image", "analyze_engineering_diagram"}
 
 
 class AgentLoop:
-    """Master ReAct Agent execution engine."""
-
     async def run_agent_stream(
         self,
         task_description: str,
-        conversation_id: Optional[str] = None,
-        model_override: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        file_ids: Optional[List[str]] = None,
+        conversation_id: str | None = None,
+        model_override: str | None = None,
+        system_prompt: str | None = None,
+        file_ids: list[str] | None = None,
         max_steps: int = 10,
-        cancel_event: Optional[asyncio.Event] = None,
+        cancel_event: asyncio.Event | None = None,
+        task_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        """
-        Runs autonomous ReAct loop and streams SSE events:
-          - event: metadata
-          - event: step (Plan, Act, Observe, Reflect)
-          - event: tool_result
-          - event: token (final response tokens)
-          - event: done
-        """
+        task_id = task_id or str(uuid.uuid4())
+        conversation_id = conversation_id or str(uuid.uuid4())
+        file_ids = file_ids or []
+        max_steps = max(1, min(max_steps, 10))
+        deadline = time.monotonic() + PER_TASK_SECONDS
 
         def cancelled() -> bool:
             return cancel_event is not None and cancel_event.is_set()
-        task_id = str(uuid.uuid4())
-        conv_id = conversation_id or str(uuid.uuid4())
 
-        # Risk-3 caps: per-step 60s, per-task 5min (docs/14_RISK_MITIGATION).
-        PER_STEP_SECONDS = 60
-        PER_TASK_SECONDS = 300
-        task_deadline = time.monotonic() + PER_TASK_SECONDS
+        def remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
 
-        # Step 1: Model Routing (attachments flow through to classifier)
-        selected_model, route_metadata = await route_request(
-            message=task_description,
-            file_ids=file_ids,
-            model_override=model_override,
-        )
-
-        # Emit metadata event
-        meta_data = {
-            "task_id": task_id,
-            "conversation_id": conv_id,
-            "model": selected_model,
-            "task_type": route_metadata.task_type,
-            "confidence": route_metadata.confidence,
-            "reasoning": route_metadata.reasoning
-        }
-        yield sse("metadata", meta_data)
-
-        # Initialize DB task record if DB is accessible
         db_task = None
         conversation = None
         try:
-            conversation, _ = await Conversation.get_or_create(
-                id=conv_id,
+            conversation, created = await Conversation.get_or_create(
+                id=conversation_id,
                 defaults={
                     "title": task_description[:80],
                     "model_override": model_override,
                     "system_prompt": system_prompt,
+                    "is_agent_mode": True,
                 },
             )
+            effective_override = model_override if created else conversation.model_override
+            effective_system_prompt = system_prompt if created else conversation.system_prompt
             db_task = await AgentTask.create(
                 id=task_id,
                 conversation=conversation,
@@ -92,167 +70,266 @@ class AgentLoop:
                 max_steps=max_steps,
                 status=AgentTaskStatus.PLANNING,
             )
-        except Exception as e:
-            logger.warning(f"DB task record initialization skipped: {e}")
+        except Exception as exc:
+            logger.exception(f"Could not initialize agent task records: {exc}")
+            effective_override = model_override
+            effective_system_prompt = system_prompt
 
-        # Step 2: Planning Phase
-        yield sse("step", {'type': 'plan', 'step_number': 0, 'step': 0, 'content': 'Generating strategic execution plan...'})
+        try:
+            selected_model, route_metadata = await asyncio.wait_for(
+                route_request(
+                    message=task_description,
+                    file_ids=file_ids,
+                    model_override=effective_override,
+                ),
+                timeout=min(PER_STEP_SECONDS, remaining()),
+            )
+        except Exception as exc:
+            logger.exception(f"Agent routing failed: {exc}")
+            if db_task:
+                db_task.status = AgentTaskStatus.FAILED
+                db_task.completed_at = datetime.now(timezone.utc)
+                await db_task.save()
+            yield sse("error", {"error": "Agent routing failed"})
+            yield sse("done", {"task_id": task_id, "status": "failed", "total_steps": 0})
+            return
 
-        plan_data = await planner.create_plan(
-            task_description=task_description,
-            model_name=selected_model,
-            file_ids=file_ids
+        yield sse(
+            "metadata",
+            {
+                "task_id": task_id,
+                "conversation_id": conversation_id,
+                "model": selected_model,
+                "task_type": route_metadata.task_type,
+                "confidence": route_metadata.confidence,
+                "reasoning": route_metadata.reasoning,
+            },
         )
 
-        steps = plan_data.get("steps", [])
-        goal_text = plan_data.get("goal", task_description)
-        yield sse("step", {'type': 'plan', 'step_number': 0, 'step': 0, 'content': f'Plan created with {len(steps)} steps: {goal_text}'})
+        yield sse(
+            "step",
+            {"type": "plan", "step_number": 0, "step": 0, "content": "Generating plan..."},
+        )
+        try:
+            plan_data = await asyncio.wait_for(
+                planner.create_plan(task_description, selected_model, file_ids),
+                timeout=min(PER_STEP_SECONDS, remaining()),
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            plan_data = get_fallback_plan(task_description)
+            logger.warning("Agent planner timed out; using fallback plan")
 
+        steps = plan_data.get("steps", [])[:max_steps]
+        yield sse(
+            "step",
+            {
+                "type": "plan",
+                "step_number": 0,
+                "step": 0,
+                "content": (
+                    f"Plan created with {len(steps)} steps: "
+                    f"{plan_data.get('goal', task_description)}"
+                ),
+            },
+        )
         if db_task:
-            try:
-                db_task.status = AgentTaskStatus.EXECUTING
-                await db_task.save()
-            except Exception as e:
-                logger.warning(f"Could not mark task executing in DB: {e}")
+            db_task.plan = plan_data
+            db_task.status = AgentTaskStatus.EXECUTING
+            await db_task.save()
 
         total_steps = 0
         final_context = ""
-        output_deliverables = []
+        output_files: list[str] = []
+        any_failed = False
+        timed_out = False
 
-        # Step 3: Execution Loop (Plan -> Act -> Observe -> Reflect)
-        step_idx = 1
-        while step_idx <= min(len(steps), max_steps):
+        for step_number, step in enumerate(steps, start=1):
             if cancelled():
-                yield sse("step", {'type': 'reflect', 'content': 'Task cancelled by user.'})
+                yield sse("step", {"type": "reflect", "content": "Task cancelled by user."})
                 break
-            if time.monotonic() > task_deadline:
-                yield sse("step", {'type': 'reflect', 'content': 'Task exceeded 5-minute cap.'})
+            if remaining() <= 0:
+                timed_out = True
+                yield sse("step", {"type": "reflect", "content": "Task exceeded 5-minute cap."})
                 break
-            step = steps[step_idx - 1]
-            tool_name = step.get("suggested_tool", "none")
-            title = step.get("title", f"Step {step_idx}")
 
-            # Act
-            act_content = f"Executing #{step_idx}: {title} (using {tool_name})"
-            yield sse("step", {'type': 'act', 'step_number': step_idx, 'step': step_idx, 'tool': tool_name, 'content': act_content})
+            tool_name = str(step.get("suggested_tool") or "none")
+            title = str(step.get("title") or f"Step {step_number}")
+            tool_input = dict(step.get("tool_input") or {})
+            tool_input.update({"task": task_description, "step_title": title})
+            if tool_name in VISION_TOOLS and file_ids:
+                tool_input.setdefault("file_id", file_ids[0])
 
-            tool_input = {"task": task_description, "step_title": title}
-            step_start = datetime.now(timezone.utc)
+            yield sse(
+                "step",
+                {
+                    "type": "act",
+                    "step_number": step_number,
+                    "step": step_number,
+                    "tool": tool_name,
+                    "content": f"Executing #{step_number}: {title} (using {tool_name})",
+                },
+            )
+            started = time.monotonic()
             try:
-                exec_result = await asyncio.wait_for(
-                    executor.execute_step(
-                        step_number=step_idx,
-                        tool_name=tool_name,
-                        tool_input=tool_input,
-                        model=selected_model
-                    ),
-                    timeout=PER_STEP_SECONDS,
+                result = await asyncio.wait_for(
+                    executor.execute_step(step_number, tool_name, tool_input, selected_model),
+                    timeout=min(PER_STEP_SECONDS, remaining()),
                 )
-            except asyncio.TimeoutError:
-                exec_result = {"success": False, "output": f"Step timed out ({PER_STEP_SECONDS}s)", "tool": tool_name}
-            step_duration_ms = int((datetime.now(timezone.utc) - step_start).total_seconds() * 1000)
+            except (TimeoutError, asyncio.TimeoutError):
+                result = {
+                    "success": False,
+                    "output": f"Step timed out ({PER_STEP_SECONDS}s)",
+                    "tool": tool_name,
+                }
 
-            # Observe
-            obs = observer.observe(step_number=step_idx, result=exec_result)
-            yield sse("step", {'type': 'observe', 'step_number': step_idx, 'step': step_idx, 'content': obs['observation']})
+            duration_ms = int((time.monotonic() - started) * 1000)
+            observation = observer.observe(step_number, result)
+            any_failed = any_failed or not result.get("success", False)
+            yield sse(
+                "step",
+                {
+                    "type": "observe",
+                    "step_number": step_number,
+                    "step": step_number,
+                    "content": observation["observation"],
+                },
+            )
 
-            # Tool result event (signals step completion to frontend and conveys deliverables)
-            tool_res_payload = {
-                "step_number": step_idx,
-                "step": step_idx,
+            tool_result = {
+                "step_number": step_number,
+                "step": step_number,
                 "tool_name": tool_name,
-                "tool_output": obs['observation'],
-                "status": "success" if exec_result.get("success") else "error",
+                "tool_output": observation["observation"],
+                "status": "success" if result.get("success") else "error",
             }
-            if exec_result.get("file_id"):
-                tool_res_payload["file_id"] = exec_result["file_id"]
-                output_deliverables.append(exec_result["file_id"])
+            if result.get("file_id"):
+                tool_result["file_id"] = result["file_id"]
+                output_files.append(result["file_id"])
+            yield sse("tool_result", tool_result)
+            yield sse(
+                "step",
+                {
+                    "type": "reflect",
+                    "step_number": step_number,
+                    "step": step_number,
+                    "content": observation["reflection"],
+                },
+            )
 
-            yield sse("tool_result", tool_res_payload)
-
-            # Reflect
-            yield sse("step", {'type': 'reflect', 'step_number': step_idx, 'step': step_idx, 'content': obs['reflection']})
-
-            # Record step in DB
             if db_task:
                 try:
                     await AgentStep.create(
                         agent_task=db_task,
-                        step_number=step_idx,
+                        step_number=step_number,
                         type=StepType.ACT,
-                        content=f"Act: {act_content}\nObserve: {obs['observation']}\nReflect: {obs['reflection']}",
+                        content=(
+                            f"Act: {title}\nObserve: {observation['observation']}\n"
+                            f"Reflect: {observation['reflection']}"
+                        ),
                         model_used=selected_model,
-                        duration_ms=step_duration_ms,
+                        duration_ms=duration_ms,
                     )
-                    if effective_tool_name := exec_result.get("tool"):
+                    if result.get("tool") not in {None, "none"}:
                         await ToolCall.create(
                             agent_task=db_task,
-                            tool_name=effective_tool_name,
-                            tool_input=tool_input,
-                            tool_output=str(exec_result.get("output", ""))[:4000],
-                            status=ToolCallStatus.SUCCESS if exec_result.get("success") else ToolCallStatus.ERROR,
-                            duration_ms=step_duration_ms,
+                            tool_name=result["tool"],
+                            tool_input={
+                                key: value
+                                for key, value in tool_input.items()
+                                if key not in {"task", "step_title"}
+                            },
+                            tool_output=str(result.get("output", ""))[:4000],
+                            status=(
+                                ToolCallStatus.SUCCESS
+                                if result.get("success")
+                                else ToolCallStatus.ERROR
+                            ),
+                            duration_ms=duration_ms,
                         )
-                except Exception as e:
-                    logger.warning(f"Could not save step #{step_idx} to DB: {e}")
+                except Exception as exc:
+                    logger.exception(f"Could not save agent step: {exc}")
 
             total_steps += 1
-            final_context += f"\n- Step {step_idx} ({title}): {obs['observation']}"
+            final_context += f"\n- Step {step_number} ({title}): {observation['observation']}"
 
-            step_idx += 1
+        if cancelled():
+            final_text = "Task cancelled by user."
+            status = AgentTaskStatus.CANCELLED
+        elif timed_out or remaining() <= 0:
+            final_text = "Task failed because it exceeded the 5-minute limit."
+            status = AgentTaskStatus.FAILED
+        else:
+            base_prompt = effective_system_prompt or (
+                "You are Kavach AI, a sovereign on-premise AI workbench. "
+                "Summarize execution results accurately. Never claim failed work succeeded."
+            )
+            messages = [
+                {
+                    "role": "system",
+                    "content": f"{base_prompt}\n\nExecution Results:{final_context}",
+                },
+                {"role": "user", "content": task_description},
+            ]
+            chunks = []
+            try:
+                async with asyncio.timeout(remaining()):
+                    async for chunk in ollama_client.chat_stream(
+                        model=selected_model,
+                        messages=messages,
+                        keep_alive=-1,
+                        options={"temperature": 0.3},
+                    ):
+                        if cancelled():
+                            break
+                        token = (
+                            chunk.message.content
+                            if hasattr(chunk, "message")
+                            else chunk.get("message", {}).get("content", "")
+                        )
+                        if token:
+                            chunks.append(token)
+                            yield sse("token", {"content": token, "token": token})
+                final_text = "".join(chunks)
+            except (TimeoutError, asyncio.TimeoutError):
+                timed_out = True
+                final_text = "Task failed because it exceeded the 5-minute limit."
+                yield sse("token", {"content": final_text, "token": final_text})
+            except Exception as exc:
+                logger.warning(f"Final agent synthesis unavailable: {exc}")
+                final_text = (
+                    f"Task failed after {total_steps} steps.{final_context}"
+                    if any_failed
+                    else f"Task completed in {total_steps} steps.{final_context}"
+                )
+                yield sse("token", {"content": final_text, "token": final_text})
+            status = (
+                AgentTaskStatus.CANCELLED
+                if cancelled()
+                else (
+                    AgentTaskStatus.FAILED if any_failed or timed_out else AgentTaskStatus.COMPLETED
+                )
+            )
 
-        # Step 4: Final Synthesis & Token Streaming
-        base_system = (
-            conversation.system_prompt
-            if conversation and getattr(conversation, "system_prompt", None)
-            else "You are Kavach AI, sovereign on-premise AI workbench. Summarize the final solution clearly based on step observations."
-        )
-        system_prompt = f"{base_system}\n\nExecution Results:\n{final_context}\n\nCRITICAL INSTRUCTION: If the execution results above indicate that a file or document was successfully generated, YOU MUST acknowledge it. DO NOT apologize or claim you cannot fulfill the request. Simply state that the requested file has been generated and is attached to the chat."
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": task_description}
-        ]
-
-        full_final_text = ""
-        try:
-            async for chunk in ollama_client.chat_stream(
-                model=selected_model,
-                messages=messages,
-                keep_alive=-1,
-                options={"temperature": 0.3}
-            ):
-                if cancelled():
-                    break
-                token_text = chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", "")
-                if token_text:
-                    full_final_text += token_text
-                    yield sse("token", {'content': token_text, 'token': token_text})
-        except Exception as e:
-            logger.warning(f"Streaming final synthesis from Ollama failed (offline): {e}")
-            fallback_summary = f"\n\n**Task Completed.**\nExecuted {total_steps} agent steps.{final_context}"
-            full_final_text = fallback_summary
-            yield sse("token", {'content': fallback_summary, 'token': fallback_summary})
-
-        # Update final task status in DB
         if db_task:
             try:
-                db_task.status = AgentTaskStatus.CANCELLED if cancelled() else AgentTaskStatus.COMPLETED
+                db_task.status = status
                 db_task.total_steps = total_steps
-                db_task.result_summary = full_final_text
-                db_task.output_files = output_deliverables
+                db_task.result_summary = final_text
+                db_task.output_files = output_files
                 db_task.completed_at = datetime.now(timezone.utc)
                 await db_task.save()
-            except Exception as e:
-                logger.warning(f"Could not mark task completed in DB: {e}")
+            except Exception as exc:
+                logger.exception(f"Could not finalize agent task: {exc}")
 
-        # Done event
-        done_event = {
-            "task_id": task_id,
-            "status": "cancelled" if cancelled() else "completed",
-            "total_steps": total_steps,
-            "output_files": output_deliverables
-        }
-        yield sse("done", done_event)
+        yield sse(
+            "done",
+            {
+                "task_id": task_id,
+                "status": status.value,
+                "total_steps": total_steps,
+                "output_files": output_files,
+            },
+        )
 
 
 agent_loop = AgentLoop()

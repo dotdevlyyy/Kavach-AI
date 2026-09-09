@@ -5,29 +5,27 @@ Pure-python only; DB-touching paths are mocked or skipped.
 """
 
 import asyncio
-import os
-import tempfile
+
 import pytest
 
-from app.rag.parser import parse_txt, parse_csv, parse_document, parse_pdf, parse_docx
-from app.rag.chunker import chunk_text, split_into_sentences
-from app.rag.embedder import serialize_embedding, deserialize_embedding
-from app.router.classifier import classify_task
-from app.router.router import route_request
-from app.agent.planner import _extract_json, _normalize_plan
 from app.agent.executor import _resolve_kwargs
 from app.agent.observer import observer
-from app.tools.file_read import file_read
-from app.tools.file_write import file_write
-from app.tools.code_execute import execute_python_code
-from app.tools.doc_generate import (
-    generate_word_document,
-    generate_excel_sheet,
-    generate_presentation,
-)
+from app.agent.planner import _extract_json, _normalize_plan
 from app.api.network import is_local_address
 from app.core.cancellation import CancellationRegistry
-
+from app.rag.chunker import chunk_text, split_into_sentences
+from app.rag.embedder import deserialize_embedding, serialize_embedding
+from app.rag.parser import parse_csv, parse_document, parse_txt
+from app.router.classifier import classify_task
+from app.router.router import route_request
+from app.tools.code_execute import execute_python_code
+from app.tools.doc_generate import (
+    generate_excel_sheet,
+    generate_presentation,
+    generate_word_document,
+)
+from app.tools.file_read import file_read
+from app.tools.file_write import file_write
 
 # ─── T1: parser (incl. .csv fix from B2) ─────────────────────────────────
 
@@ -109,8 +107,8 @@ def test_t3_split_into_sentences():
 def test_t4_rrf_formula():
     """RRF score = Σ 1/(k + rank+1). Verify by hand for two ranked lists."""
     k = 60
-    fts = ["a", "b", "c"]           # ranks 0,1,2
-    vec = ["b", "d", "a"]           # ranks 0,1,2
+    fts = ["a", "b", "c"]  # ranks 0,1,2
+    vec = ["b", "d", "a"]  # ranks 0,1,2
     scores = {}
     for rank, rid in enumerate(fts):
         scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + rank + 1)
@@ -165,9 +163,8 @@ def test_t5_code_block_detection():
 
 def test_t6_override_bypasses_classifier():
     import asyncio
-    model, meta = asyncio.run(route_request(
-        message="hello", model_override="custom:7b"
-    ))
+
+    model, meta = asyncio.run(route_request(message="hello", model_override="custom:7b"))
     assert model == "custom:7b"
     assert meta.confidence == 1.0
     assert "override" in meta.reasoning.lower()
@@ -175,6 +172,7 @@ def test_t6_override_bypasses_classifier():
 
 def test_t6_default_routes_to_llama():
     import asyncio
+
     model, _ = asyncio.run(route_request(message="hello world"))
     assert model == "llama3.2:1b"
 
@@ -225,7 +223,7 @@ def test_t8_resolve_kwargs_fills_required_string():
     def tool(query: str):
         return query
 
-    out = _resolve_kwargs(tool, {"task": "do it"})
+    out = asyncio.run(_resolve_kwargs(tool, {"task": "do it"}))
     assert out["query"] == "do it"
 
 
@@ -233,7 +231,7 @@ def test_t8_resolve_kwargs_does_not_overwrite_explicit():
     def tool(query: str):
         return query
 
-    out = _resolve_kwargs(tool, {"query": "explicit", "task": "ignored"})
+    out = asyncio.run(_resolve_kwargs(tool, {"query": "explicit", "task": "ignored"}))
     assert out["query"] == "explicit"
 
 
@@ -242,7 +240,7 @@ def test_t8_resolve_kwargs_aliases_image_path_to_file_path():
     def tool(file_path: str):
         return file_path
 
-    out = _resolve_kwargs(tool, {"image_path": "/tmp/x.png"})
+    out = asyncio.run(_resolve_kwargs(tool, {"image_path": "/tmp/x.png"}))
     assert out.get("file_path") == "/tmp/x.png"
 
 
@@ -251,7 +249,7 @@ def test_t8_resolve_kwargs_aliases_file_path_to_image_path():
     def tool(image_path: str):
         return image_path
 
-    out = _resolve_kwargs(tool, {"file_path": "/tmp/x.png"})
+    out = asyncio.run(_resolve_kwargs(tool, {"file_path": "/tmp/x.png"}))
     assert out.get("image_path") == "/tmp/x.png"
 
 
@@ -274,14 +272,14 @@ def test_t9_observer_failure():
 
 
 def test_t10_file_read_blocks_traversal(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.tools.file_read.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
     (tmp_path / "ok.txt").write_text("hi", encoding="utf-8")
     res = file_read("../etc/passwd")
     assert "Access denied" in res
 
 
 def test_t10_file_read_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.tools.file_read.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
     res = file_read("nope_does_not_exist.txt")
     assert "not found" in res.lower()
 
@@ -290,41 +288,51 @@ def test_t10_file_read_missing(monkeypatch, tmp_path):
 
 
 def test_t11_file_write_blocks_traversal(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.tools.file_write.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
     res = file_write("../escape.txt", "pwn")
     assert "Access denied" in res
     assert not (tmp_path.parent / "escape.txt").exists()
 
 
 def test_t11_file_write_writes_inside(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.tools.file_write.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
     res = file_write("safe.txt", "ok")
     assert "Successfully wrote" in res
     assert (tmp_path / "safe.txt").exists()
 
 
+def test_t11_path_guard_rejects_sibling_prefix(tmp_path):
+    from app.core.paths import resolve_within
+
+    root = tmp_path / "data"
+    sibling = tmp_path / "data_evil" / "secret.txt"
+    root.mkdir()
+    with pytest.raises(ValueError):
+        resolve_within(root, sibling)
+
+
 # ─── T12: code_execute branches ──────────────────────────────────────────
 
 
-def test_t12_code_execute_success():
-    import asyncio
+def test_t12_code_execute_fails_closed_without_docker(monkeypatch):
+    monkeypatch.setattr("app.tools.code_execute.shutil.which", lambda _: None)
     r = asyncio.run(execute_python_code("print('hi')", timeout=5))
-    assert r["success"] is True
-    assert "hi" in r["output"]
+    assert r["success"] is False
+    assert "sandbox unavailable" in r["output"].lower()
 
 
-def test_t12_code_execute_syntax_error():
-    import asyncio
+def test_t12_code_execute_never_falls_back_to_host(monkeypatch):
+    monkeypatch.setattr("app.tools.code_execute.shutil.which", lambda _: None)
     r = asyncio.run(execute_python_code("def $$$", timeout=5))
     assert r["success"] is False
-    assert r["exit_code"] != 0
+    assert "docker is not installed" in r["output"].lower()
 
 
-def test_t12_code_execute_timeout():
-    import asyncio
+def test_t12_code_execute_unavailable_before_timeout(monkeypatch):
+    monkeypatch.setattr("app.tools.code_execute.shutil.which", lambda _: None)
     r = asyncio.run(execute_python_code("import time; time.sleep(5)", timeout=1))
     assert r["success"] is False
-    assert "timed out" in r["output"].lower()
+    assert "sandbox unavailable" in r["output"].lower()
 
 
 # ─── T13: doc_generate all three ────────────────────────────────────────
@@ -372,9 +380,37 @@ def test_t14_is_local_address_public():
 
 def test_t14_is_local_address_empty_and_invalid():
     assert is_local_address("") is True
-    assert is_local_address("not-an-ip") is True  # fail-safe: treat as local
+    assert is_local_address("not-an-ip") is False
     assert is_local_address("*") is True
     assert is_local_address("0.0.0.0") is True
+
+
+def test_t14_malformed_connection_makes_verdict_unknown(monkeypatch):
+    from app.api import network
+
+    address = type("Address", (), {"ip": "not-an-ip", "port": 443})()
+    connection = type(
+        "Connection",
+        (),
+        {"pid": None, "laddr": None, "raddr": address, "type": 1, "status": "ESTABLISHED"},
+    )()
+    monkeypatch.setattr("app.api.network.psutil.net_connections", lambda **_: [connection])
+    network._snapshot_connections()
+    summary = network.get_network_summary()
+    assert summary["status"] == "unknown"
+    assert summary["is_air_gapped"] is None
+
+
+def test_config_reads_documented_environment(monkeypatch):
+    from app.core.config import load_settings
+
+    monkeypatch.setenv("KAVACH_HOST", "127.0.0.1")
+    monkeypatch.setenv("KAVACH_PORT", "8123")
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama.internal:11434")
+    loaded = load_settings()
+    assert loaded.HOST == "127.0.0.1"
+    assert loaded.PORT == 8123
+    assert loaded.ollama_host == "http://ollama.internal:11434"
 
 
 # ─── T15: cancellation semantics ────────────────────────────────────────
@@ -415,6 +451,7 @@ def test_t16_ocr_extract_passes_keep_alive(monkeypatch, tmp_path):
     """B10 regression guard: ocr_extract must use ollama_client.chat wrapper
     (which defaults keep_alive=-1), not raw client.chat."""
     import asyncio
+
     from app.tools import ocr_extract
 
     img = tmp_path / "fake.png"
@@ -426,6 +463,7 @@ def test_t16_ocr_extract_passes_keep_alive(monkeypatch, tmp_path):
         return upload_row
 
     monkeypatch.setattr("app.models.file_upload.FileUpload.get_or_none", fake_get_or_none)
+    monkeypatch.setattr("app.tools.ocr_extract.UPLOAD_DIR", tmp_path)
 
     captured = {}
 
@@ -439,14 +477,15 @@ def test_t16_ocr_extract_passes_keep_alive(monkeypatch, tmp_path):
 
     monkeypatch.setattr("app.core.ollama_client.ollama_client.chat", fake_chat)
 
-    out = asyncio.run(ocr_extract.extract_text_from_image(filepath=str(img)))
+    out = asyncio.run(ocr_extract.extract_text_from_image(file_id="abc"))
     assert captured["keep_alive"] == -1
     assert captured["model"] == "qwen2.5vl:3b"
-    assert out == "extracted text"
+    assert out == "[Page 1]\nextracted text"
 
 
 def test_t16_image_analyze_passes_keep_alive(monkeypatch, tmp_path):
     import asyncio
+
     from app.tools import image_analyze
 
     img = tmp_path / "fake.png"
@@ -457,6 +496,7 @@ def test_t16_image_analyze_passes_keep_alive(monkeypatch, tmp_path):
         return upload_row
 
     monkeypatch.setattr("app.models.file_upload.FileUpload.get_or_none", fake_get_or_none)
+    monkeypatch.setattr("app.tools.image_analyze.UPLOAD_DIR", tmp_path)
 
     captured = {}
 
@@ -470,7 +510,7 @@ def test_t16_image_analyze_passes_keep_alive(monkeypatch, tmp_path):
 
     monkeypatch.setattr("app.core.ollama_client.ollama_client.chat", fake_chat)
 
-    out = asyncio.run(image_analyze.analyze_engineering_diagram(filepath=str(img), query="valves"))
+    out = asyncio.run(image_analyze.analyze_engineering_diagram(file_id="abc", query="valves"))
     assert captured["keep_alive"] == -1
     assert captured["model"] == "qwen2.5vl:3b"
     assert out == "diagram analysis"
@@ -483,6 +523,7 @@ def test_t17_cancel_event_stops_stream_consumption():
     """chat.py checks `cancel_event.is_set()` between tokens. Verify the event
     is cleared after `clear()` so a fresh request doesn't see stale cancellation."""
     from app.core.cancellation import CancellationRegistry
+
     reg = CancellationRegistry()
     ev = reg.get("conv-1")
     reg.cancel("conv-1")
@@ -495,22 +536,15 @@ def test_t17_cancel_event_stops_stream_consumption():
 # ─── T20: code_execute subprocess killed on timeout cleans up temp file ──
 
 
-def test_t20_code_execute_timeout_cleanup():
-    import asyncio
-    import tempfile
-    from app.tools.code_execute import execute_python_code
-
+def test_t20_code_execute_unavailable_is_clean(monkeypatch):
+    monkeypatch.setattr("app.tools.code_execute.shutil.which", lambda _: None)
     r = asyncio.run(execute_python_code("import time; time.sleep(10)", timeout=1))
     assert r["success"] is False
-    assert "timed out" in r["output"].lower()
-    # The temp dir is removed automatically by TemporaryDirectory; nothing to assert
-    # about a specific path. Just verify the function returns cleanly (no exception).
+    assert "sandbox unavailable" in r["output"].lower()
 
 
-def test_t20_code_execute_returns_on_syntax_error():
-    import asyncio
-    from app.tools.code_execute import execute_python_code
-
+def test_t20_code_execute_returns_on_syntax_error(monkeypatch):
+    monkeypatch.setattr("app.tools.code_execute.shutil.which", lambda _: None)
     r = asyncio.run(execute_python_code("def $$$:", timeout=5))
     assert r["success"] is False
     assert r["exit_code"] != 0
@@ -523,6 +557,7 @@ def test_t21_wal_mode_and_foreign_keys_enabled(tmp_path):
     """init_db() applies WAL + foreign_keys pragmas. Init a fresh DB into tmp_path
     and assert the pragmas stuck on the open conn."""
     from tortoise import Tortoise
+
     from app.core.database import TORTOISE_ORM
 
     async def check():
@@ -541,6 +576,7 @@ def test_t21_wal_mode_and_foreign_keys_enabled(tmp_path):
 
     async def _apply_pragmas():
         from tortoise import Tortoise
+
         conn = Tortoise.get_connection("default")
         await conn.execute_query("PRAGMA journal_mode=WAL;")
         await conn.execute_query("PRAGMA foreign_keys=ON;")
@@ -574,6 +610,7 @@ def test_t23_hydrate_batch_single_query(monkeypatch):
 
     class FakeAwaitableQS:
         """Mimic Tortoise's AwaitableQuery: sync chain + awaitable + list result."""
+
         def __init__(self, ids):
             self._ids = ids
 
@@ -583,6 +620,7 @@ def test_t23_hydrate_batch_single_query(monkeypatch):
         def __await__(self):
             async def _resolve():
                 return [FakeChunk(c) for c in self._ids]
+
             return _resolve().__await__()
 
     async def run():
@@ -609,12 +647,9 @@ def test_t24_resolve_kwargs_multi_required_strings_uses_task():
     def tool(a: str, b: str):
         return a + b
 
-    # Both required strings are missing. Per spec, only the FIRST required str
-    # gets filled from task/step_title. The second is dropped from the kwargs
-    # (the tool will hit its own TypeError — caller decides if that's a bug).
-    out = _resolve_kwargs(tool, {"task": "from task"})
+    out = asyncio.run(_resolve_kwargs(tool, {"task": "from task"}))
     assert out.get("a") == "from task"
-    assert "b" not in out  # second required string is intentionally unfilled
+    assert out.get("b") == "from task"
 
 
 def test_t24_resolve_kwargs_optional_param_skipped():
@@ -622,7 +657,7 @@ def test_t24_resolve_kwargs_optional_param_skipped():
         return name
 
     # Only the required string gets filled; optional int with default is left alone.
-    out = _resolve_kwargs(tool, {"task": "from task"})
+    out = asyncio.run(_resolve_kwargs(tool, {"task": "from task"}))
     assert out["name"] == "from task"
     assert "count" not in out or out.get("count", 0) == 0
 
@@ -633,13 +668,14 @@ def test_t24_resolve_kwargs_rejects_unknown_key():
 
     with pytest.raises(ValueError, match="Unknown kwargs"):
         # 'bogus' is not declared on `tool`
-        _resolve_kwargs(tool, {"name": "ok", "bogus": "x"})
+        asyncio.run(_resolve_kwargs(tool, {"name": "ok", "bogus": "x"}))
 
 
 def test_t24_resolve_kwargs_meta_keys_pass_through():
     """task + step_title are agent-loop scaffolding, must not raise unknown."""
+
     def tool(query: str):
         return query
 
-    out = _resolve_kwargs(tool, {"task": "real task", "step_title": "Step 1"})
+    out = asyncio.run(_resolve_kwargs(tool, {"task": "real task", "step_title": "Step 1"}))
     assert out["query"] == "real task"

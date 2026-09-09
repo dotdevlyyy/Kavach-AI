@@ -4,6 +4,7 @@ Represents a single message within a conversation.
 """
 
 import uuid
+
 from tortoise import fields, models
 
 
@@ -25,7 +26,7 @@ class Message(models.Model):
     created_at = fields.DatetimeField(auto_now_add=True)
 
     # Reverse relations
-    tool_calls: fields.ReverseRelation["app.models.tool_call.ToolCall"]
+    tool_calls: fields.ReverseRelation["app.models.tool_call.ToolCall"]  # noqa: F821
 
     class Meta:
         table = "messages"

@@ -5,21 +5,21 @@ Mounts CORS, lifecycle hooks (Ollama pre-loading, Tortoise ORM), and API routers
 
 import asyncio
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.core.config import settings
-from app.core.database import init_db, close_db
-from app.core.ollama_client import ollama_client
-
-from app.api.chat import router as chat_router
 from app.api.agent import router as agent_router
+from app.api.chat import router as chat_router
 from app.api.files import router as files_router
-from app.api.network import router as network_router
 from app.api.health import router as health_router
 from app.api.knowledge import router as knowledge_router
 from app.api.models import router as models_router
+from app.api.network import router as network_router
+from app.core.config import settings
+from app.core.database import close_db, init_db
+from app.core.ollama_client import ollama_client
 
 
 @asynccontextmanager
@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
     snapshot_task = None
     try:
         from app.api.network import _periodic_snapshotter
+
         snapshot_task = asyncio.create_task(_periodic_snapshotter(interval_seconds=30))
     except Exception as e:
         logger.warning(f"Network snapshotter failed to start: {e}")
@@ -61,7 +62,7 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.app_version,
     description="Sovereign On-Premises Agentic AI Workbench for MRPL & PSUs",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware for Next.js frontend integration

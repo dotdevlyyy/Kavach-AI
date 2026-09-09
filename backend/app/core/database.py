@@ -4,6 +4,7 @@ Tortoise ORM with SQLite + WAL mode + FTS5 full-text search.
 """
 
 from loguru import logger
+
 from app.core.config import settings
 from app.core.paths import DATA_ROOT  # noqa: F401 — imported for mkdir side-effect
 
@@ -44,6 +45,9 @@ async def init_sqlite_pragmas():
     await conn.execute_query("PRAGMA synchronous=NORMAL;")
     await conn.execute_query("PRAGMA cache_size=-64000;")  # 64MB cache
     await conn.execute_query("PRAGMA foreign_keys=ON;")
+    await conn.execute_query(
+        "CREATE INDEX IF NOT EXISTS idx_network_logs_timestamp ON network_logs(timestamp);"
+    )
     logger.info("✅ SQLite WAL mode and performance pragmas set")
 
 
@@ -66,17 +70,20 @@ async def init_fts5():
 
     logger.info("✅ FTS5 virtual table created (populated explicitly by pipeline)")
 
+
 async def init_db():
     from tortoise import Tortoise
-    # ponytail: kept for sync TestClient fixtures (tests/test_integration.py).
-    # Drop once tests move to httpx.AsyncClient — silent typo-swallowing is otherwise risky.
+
+    # Starlette lifespan and request handlers run in separate contextvar contexts.
     await Tortoise.init(config=TORTOISE_ORM, _enable_global_fallback=True)
     await Tortoise.generate_schemas()
     await init_sqlite_pragmas()
     await init_fts5()
     logger.info("✅ Database initialized")
 
+
 async def close_db():
     from tortoise import Tortoise
+
     await Tortoise.close_connections()
     logger.info("Database connections closed")

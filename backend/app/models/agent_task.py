@@ -4,7 +4,9 @@ Represents a multi-step agentic task execution.
 """
 
 import uuid
+
 from tortoise import fields, models
+
 from app.schemas.common import AgentTaskStatus
 
 
@@ -28,7 +30,7 @@ class AgentTask(models.Model):
     completed_at = fields.DatetimeField(null=True)
 
     # Reverse relations
-    steps: fields.ReverseRelation["app.models.agent_step.AgentStep"]
+    steps: fields.ReverseRelation["app.models.agent_step.AgentStep"]  # noqa: F821
 
     class Meta:
         table = "agent_tasks"

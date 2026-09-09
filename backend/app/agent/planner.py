@@ -5,17 +5,20 @@ Generates initial step-by-step execution plans for complex user requests.
 
 import json
 import re
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
+
 from app.core.ollama_client import ollama_client
 
-
-SYSTEM_PLANNER_PROMPT = """You are Kavach AI's Strategic ReAct Agent Planner for MRPL Refinery & Critical Infrastructure operations.
-Given a user's task request and optional file context, create a concise execution plan with clear steps.
+SYSTEM_PLANNER_PROMPT = """You are Kavach AI's Strategic ReAct Agent Planner for MRPL Refinery
+and Critical Infrastructure operations. Given a user's task request and optional file context,
+create a concise execution plan with clear steps.
 
 Available Capabilities & Tools (use exact names for `suggested_tool`):
 1. `code_execute`: Run Python code safely for data processing or math calculations.
-2. `search_knowledge_base`: Query on-premise Knowledge Base for refinery SOPs, inspection standards, or P&ID data.
+2. `search_knowledge_base`: Query on-premise Knowledge Base for refinery SOPs,
+   inspection standards, or P&ID data.
 3. `generate_word_document`: Generate an official Word approval note (.docx).
 4. `generate_excel_sheet`: Generate an Excel procurement or data spreadsheet (.xlsx).
 5. `generate_presentation`: Generate a PowerPoint summary (.pptx).
@@ -32,7 +35,8 @@ Respond strictly in valid JSON format:
             "step_number": 1,
             "title": "<Short step title>",
             "description": "<What will be accomplished in this step>",
-            "suggested_tool": "<tool_name or none>"
+            "suggested_tool": "<tool_name or none>",
+            "tool_input": {"<parameter>": "<value>"}
         }
     ]
 }
@@ -49,24 +53,27 @@ def get_fallback_plan(task_description: str) -> Dict[str, Any]:
         doc_tool = "generate_presentation"
     else:
         doc_tool = "generate_word_document"
-        
+
     return {
-        "goal": "Fulfill user request via fallback plan",
+        "goal": task_description,
         "steps": [
             {
                 "step_number": 1,
                 "title": "Analyze Task & Context",
                 "description": "Gather context and execute primary logic.",
                 "suggested_tool": "search_knowledge_base",
+                "tool_input": {"query": task_description},
             },
             {
                 "step_number": 2,
                 "title": "Execute & Formulate Response",
                 "description": task_description,
                 "suggested_tool": doc_tool,
+                "tool_input": {"title": "Generated Document"},
             },
         ],
     }
+
 
 def _extract_json(text: str) -> Optional[Dict[str, Any]]:
     """Best-effort JSON extraction from noisy LLM output."""
@@ -120,15 +127,25 @@ def _normalize_plan(parsed: Dict[str, Any], task_description: str) -> Dict[str, 
         if not isinstance(step, dict):
             continue
         tool = step.get("suggested_tool") or "none"
-        if override_tool and tool in {"generate_word_document", "generate_excel_sheet", "generate_presentation", "generate_pdf_document"}:
+        if override_tool and tool in {
+            "generate_word_document",
+            "generate_excel_sheet",
+            "generate_presentation",
+            "generate_pdf_document",
+        }:
             tool = override_tool
-            
-        normalized.append({
-            "step_number": i,
-            "title": step.get("title") or f"Step {i}",
-            "description": step.get("description") or "",
-            "suggested_tool": tool,
-        })
+
+        normalized.append(
+            {
+                "step_number": i,
+                "title": step.get("title") or f"Step {i}",
+                "description": step.get("description") or "",
+                "suggested_tool": tool,
+                "tool_input": step.get("tool_input")
+                if isinstance(step.get("tool_input"), dict)
+                else {},
+            }
+        )
     if not normalized:
         return get_fallback_plan(task_description)
     return {
@@ -141,16 +158,18 @@ class AgentPlanner:
     """Agent planner module for generating structured step breakdown."""
 
     async def create_plan(
-        self,
-        task_description: str,
-        model_name: str,
-        file_ids: Optional[List[str]] = None
+        self, task_description: str, model_name: str, file_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Generates a structured execution plan from the user prompt."""
         task_lower = task_description.lower()
-        
+
         # Heuristic: If it's a simple document generation request, bypass the erratic LLM planner
-        if ("generate" in task_lower or "create" in task_lower) and any(x in task_lower for x in ["pdf", "word doc", "resume", "excel", "presentation", "report", "document"]):
+        if any(
+            verb in task_lower for verb in ["generate", "create", "make", "write", "build", "draft"]
+        ) and any(
+            x in task_lower
+            for x in ["pdf", "word doc", "resume", "excel", "presentation", "report", "document"]
+        ):
             logger.info("Bypassing LLM planner for direct document generation request.")
             return get_fallback_plan(task_description)
 
@@ -160,18 +179,19 @@ class AgentPlanner:
 
         messages = [
             {"role": "system", "content": SYSTEM_PLANNER_PROMPT},
-            {"role": "user", "content": user_content}
+            {"role": "user", "content": user_content},
         ]
 
         try:
             response_text = ""
             async for chunk in ollama_client.chat_stream(
-                model=model_name,
-                messages=messages,
-                keep_alive=-1,
-                options={"temperature": 0.2}
+                model=model_name, messages=messages, keep_alive=-1, options={"temperature": 0.2}
             ):
-                token = chunk.message.content if hasattr(chunk, 'message') else chunk.get("message", {}).get("content", "")
+                token = (
+                    chunk.message.content
+                    if hasattr(chunk, "message")
+                    else chunk.get("message", {}).get("content", "")
+                )
                 response_text += token
 
             parsed = _extract_json(response_text)
