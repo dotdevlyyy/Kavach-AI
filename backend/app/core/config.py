@@ -33,7 +33,7 @@ class Settings(msgspec.Struct, frozen=True):
         "qwen2.5vl:3b",
     )
 
-    embed_model: str = "nomic-embed-text:latest"
+    embed_model: str = "nomic-embed-text"
 
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
 
