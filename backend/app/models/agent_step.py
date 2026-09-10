@@ -23,6 +23,7 @@ class AgentStep(models.Model):
     model_used = fields.CharField(max_length=100, null=True)
     tool_calls = fields.JSONField(default=list)
     duration_ms = fields.IntField(default=0)
+    tokens_used = fields.IntField(default=0)
     created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:
