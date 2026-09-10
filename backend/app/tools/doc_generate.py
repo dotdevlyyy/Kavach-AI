@@ -1,5 +1,6 @@
 import re
 import uuid
+from html import unescape
 from pathlib import Path
 
 from docx import Document
@@ -22,6 +23,16 @@ def _safe_excel_cell(value):
     if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
         return "'" + value
     return value
+
+
+def _plain_document_text(content: str) -> str:
+    """Remove model formatting tokens before writing prose documents."""
+    content = re.sub(r"```[\w-]*\s*|```", "", content)
+    content = re.sub(r"!?(?:\[([^\]]*)\]\([^)]*\))", r"\1", content)
+    content = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", content)
+    content = re.sub(r"(\*\*|__|~~|`)", "", content)
+    content = re.sub(r"<[^>]+>", "", content)
+    return unescape(content).strip()
 
 
 def _unicode_font() -> Path:
@@ -63,7 +74,7 @@ def generate_word_document(title: str, content: str, author: str = "Kavach AI") 
         doc = Document()
         doc.add_heading(title, 0)
         doc.add_paragraph(f"Author: {author}")
-        doc.add_paragraph(content)
+        doc.add_paragraph(_plain_document_text(content))
         doc.save(meta["path"])
         meta["status"] = "ok"
         return meta
@@ -142,6 +153,7 @@ def generate_pdf_document(title: str, content: str, author: str = "Kavach AI") -
         pdf = FPDF()
         pdf.add_page()
         font = _unicode_font()
+        content = _plain_document_text(content)
         _validate_pdf_text(font, f"{title}\nAuthor: {author}\n{content}")
         pdf.add_font("KavachUnicode", fname=str(font))
         pdf.set_font("KavachUnicode", size=16)

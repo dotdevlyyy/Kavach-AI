@@ -145,6 +145,7 @@ def _media_type(path: Path) -> str:
 
 
 TEXT_PREVIEW_TYPES = {"txt", "csv", "md", "json"}
+PREVIEWABLE_TYPES = TEXT_PREVIEW_TYPES | {"code", "docx", "xlsx", "pptx"}
 TEXT_PREVIEW_BYTES = 4096
 
 
@@ -308,55 +309,67 @@ async def preview_file(file_id: UUID):
     """
     db_file = await FileUpload.get_or_none(id=str(file_id))
     stored_path = db_file.stored_path if db_file else None
-    if not stored_path:
+    if stored_path:
+        try:
+            stored_path = resolve_upload_path(stored_path)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="File not found")
+        file_type = db_file.file_type
+    else:
         output_path = _resolve_output_path(file_id)
         if not output_path:
             raise HTTPException(status_code=404, detail="File not found")
-        # Generated docs aren't text-previewable; surface the download URL instead.
-        return {
-            "id": str(file_id),
-            "file_type": output_path.suffix.lstrip(".").lower() or "other",
-            "preview_kind": "unsupported",
-            "download_url": f"/api/files/download/{file_id}",
-        }
-
-    try:
-        stored_path = resolve_upload_path(stored_path)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="File not found")
+        stored_path = output_path
+        file_type = output_path.suffix.lstrip(".").lower() or "other"
     if not stored_path.is_file():
         raise HTTPException(status_code=404, detail="File content not found on disk")
 
-    if db_file.file_type in TEXT_PREVIEW_TYPES:
+    if file_type in PREVIEWABLE_TYPES:
         try:
-            with stored_path.open("rb") as f:
-                raw = f.read(TEXT_PREVIEW_BYTES)
-            try:
-                text = raw.decode("utf-8")
-            except UnicodeDecodeError:
-                text = raw.decode("utf-8", errors="replace")
+            if file_type in TEXT_PREVIEW_TYPES | {"code"}:
+                with stored_path.open("rb") as f:
+                    text = f.read(TEXT_PREVIEW_BYTES).decode("utf-8", errors="replace")
+            elif file_type == "docx":
+                from docx import Document
+                text = "\n".join(paragraph.text for paragraph in Document(stored_path).paragraphs)
+            elif file_type == "xlsx":
+                from openpyxl import load_workbook
+                workbook = load_workbook(stored_path, read_only=True, data_only=True)
+                try:
+                    rows = []
+                    for sheet in workbook.worksheets:
+                        rows.append(f"[{sheet.title}]")
+                        rows.extend("\t".join("" if cell is None else str(cell) for cell in row) for row in sheet.iter_rows(values_only=True))
+                    text = "\n".join(rows)
+                finally:
+                    workbook.close()
+            else:
+                from pptx import Presentation
+                presentation = Presentation(stored_path)
+                text = "\n\n".join("\n".join(shape.text for shape in slide.shapes if hasattr(shape, "text")) for slide in presentation.slides)
+            text = text[:TEXT_PREVIEW_BYTES]
             return {
-                "id": str(db_file.id),
-                "file_type": db_file.file_type,
+                "id": str(file_id),
+                "file_type": file_type,
                 "preview_kind": "text",
                 "text": text,
-                "truncated": len(raw) >= TEXT_PREVIEW_BYTES,
+                "truncated": len(text) >= TEXT_PREVIEW_BYTES,
             }
         except Exception as e:
             logger.exception(f"Preview failed for {file_id}: {e}")
             raise HTTPException(status_code=500, detail="Preview failed")
 
-    if db_file.file_type == "image":
+    if file_type == "image":
         return {
-            "id": str(db_file.id),
+            "id": str(file_id),
             "file_type": "image",
             "preview_kind": "image",
             "image_url": f"/api/files/download/{file_id}",
         }
 
     return {
-        "id": str(db_file.id),
-        "file_type": db_file.file_type,
+        "id": str(file_id),
+        "file_type": file_type,
         "preview_kind": "unsupported",
         "download_url": f"/api/files/download/{file_id}",
     }

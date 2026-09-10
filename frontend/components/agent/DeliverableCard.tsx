@@ -12,41 +12,36 @@ interface DeliverableCardProps {
 export function DeliverableCard({ id, filename, type, sizeBytes }: DeliverableCardProps) {
   const isWord = type === "docx";
   const isPdf = type === "pdf";
-  const Icon = isPdf ? FileText : (isWord ? FileText : Table);
-  
-  // Format bytes to KB/MB
+  const Icon = isPdf || isWord ? FileText : Table;
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const downloadUrl = `${apiBase}/api/files/download/${id}`;
+
   const formatSize = (bytes?: number) => {
     if (!bytes) return "Unknown size";
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  };
-
-  const handleDownload = () => {
-    // In Phase 5, this will be wired to actual API download
-    // e.g. window.open(`/api/files/download/${id}`)
-    alert(`Downloading ${filename} (ID: ${id})`);
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   return (
-    <div className="flex items-center justify-between p-3 my-2 bg-white shadow-sm border border-gray-200 rounded-lg max-w-sm hover:border-gray-300 transition-colors">
-      <div className="flex items-center gap-3 overflow-hidden">
-        <div className={`p-2 rounded-md shrink-0 ${isPdf ? "bg-amber-50 text-amber-600" : (isWord ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600")}`}>
-          <Icon className="w-6 h-6" />
+    <div className="flex items-center justify-between p-3 my-2 bg-card border border-border rounded max-w-sm hover:border-primary/50 transition-colors">
+      <div className="flex items-center gap-3 overflow-hidden min-w-0">
+        <div className={`p-2 rounded shrink-0 ${isPdf ? "bg-amber-500/10 text-amber-500" : (isWord ? "bg-primary/10 text-primary" : "bg-emerald-500/10 text-emerald-500")}`}>
+          <Icon className="w-6 h-6" aria-hidden="true" />
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="text-sm font-medium text-gray-800 truncate">{filename}</span>
-          <span className="text-xs text-gray-500">{formatSize(sizeBytes)} • Ready</span>
+          <span className="text-sm font-medium text-foreground truncate">{filename}</span>
+          <span className="text-xs text-muted-foreground">{formatSize(sizeBytes)} · Ready</span>
         </div>
       </div>
-      
-      <button 
-        onClick={handleDownload}
-        className="p-2 shrink-0 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-900 transition-colors ml-2"
-        title="Download File"
+      <a
+        href={downloadUrl}
+        download
+        className="p-2 shrink-0 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        aria-label={`Download ${filename}`}
       >
-        <Download className="w-4 h-4" />
-      </button>
+        <Download className="w-4 h-4" aria-hidden="true" />
+      </a>
     </div>
   );
 }

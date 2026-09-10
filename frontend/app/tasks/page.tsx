@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, AlertCircle, RefreshCw } from "lucide-react";
+import { Clock, AlertCircle, RefreshCw } from "lucide-react";
+import { AgentTaskQueue, type AgentTask } from "@/components/agents-ui/agent-task-queue";
 
 interface AgentTaskItem {
   id: string;
@@ -37,9 +38,23 @@ export default function TasksPage() {
     fetchTasks();
   }, []);
 
+  const queueTasks: AgentTask[] = tasks.map((task) => ({
+    id: task.id,
+    title: task.description,
+    status: task.status === "executing" ? "running" : task.status === "cancelled" ? "blocked" : task.status as AgentTask["status"],
+    progress: task.status === "completed" ? 100 : undefined,
+    createdAt: task.created_at,
+    updatedLabel: new Date(task.created_at).toLocaleString(),
+    checkpoints: Array.from({ length: task.total_steps }, (_, index) => ({
+      id: `${task.id}-${index + 1}`,
+      title: `Step ${index + 1}`,
+      status: task.status === "completed" ? "completed" : "pending",
+    })),
+  }));
+
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="h-[calc(100dvh-4rem)] min-h-0 flex flex-col overflow-hidden">
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b border-border/50 p-4 sm:px-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Task History</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -56,6 +71,7 @@ export default function TasksPage() {
         </button>
       </div>
 
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-8">
       {error && (
         <div className="p-4 mb-6 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl flex items-center gap-3 text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
@@ -74,44 +90,9 @@ export default function TasksPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-sidebar-accent text-muted-foreground uppercase text-xs">
-              <tr>
-                <th className="px-6 py-3">Task Description</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3">Steps</th>
-                <th className="px-6 py-3">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border text-foreground">
-              {tasks.map((task) => (
-                <tr key={task.id} className="hover:bg-sidebar-accent/40 transition-colors">
-                  <td className="px-6 py-4 font-medium max-w-md truncate">{task.description}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        task.status === "completed"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : task.status === "executing"
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "bg-amber-500/10 text-amber-400"
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {task.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-mono text-muted-foreground">{task.total_steps}</td>
-                  <td className="px-6 py-4 text-xs text-muted-foreground">
-                    {new Date(task.created_at).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AgentTaskQueue tasks={queueTasks} isProcessing={tasks.some((task) => task.status === "executing")} />
       )}
+      </div>
     </div>
   );
 }

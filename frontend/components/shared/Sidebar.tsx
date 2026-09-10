@@ -36,7 +36,7 @@ export function Sidebar() {
   ];
 
   const handleNewChat = () => {
-    const newId = createChat();
+    createChat();
     router.push('/chat');
   };
 
@@ -54,7 +54,7 @@ export function Sidebar() {
 
   return (
     <div 
-      className={`bg-sidebar border-r border-sidebar-border h-screen flex flex-col shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
+      className={`bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
         isSidebarCollapsed ? "w-0 md:w-16" : "w-64"
       }`}
     >
@@ -111,22 +111,20 @@ export function Sidebar() {
           </div>
           <div className="space-y-1">
             {chats.map((chat) => (
-              <div 
-                key={chat.id} 
-                onClick={() => handleSelectChat(chat.id)}
-                className={`group flex items-center justify-between px-3 py-2 rounded-md transition-colors cursor-pointer whitespace-nowrap overflow-hidden ${
+              <div key={chat.id} className={`group flex items-center justify-between rounded transition-colors whitespace-nowrap overflow-hidden ${
                   activeChatId === chat.id && pathname === '/chat'
                     ? "bg-sidebar-accent text-sidebar-foreground" 
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 }`}
               >
-                <div className="flex items-center gap-2 overflow-hidden">
+                <button type="button" onClick={() => handleSelectChat(chat.id)} className="flex items-center gap-2 min-w-0 flex-1 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
                   <MessageCircle className={`w-4 h-4 shrink-0 ${activeChatId === chat.id && pathname === '/chat' ? "text-primary" : ""}`} />
                   <span className="text-sm truncate">{chat.title}</span>
-                </div>
+                </button>
                 <button 
                   onClick={(e) => handleDeleteChat(e, chat.id)}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all shrink-0 p-1"
+                  aria-label={`Delete chat ${chat.title}`}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0 p-2 rounded focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

@@ -152,6 +152,7 @@ class AgentLoop:
         total_steps = 0
         final_context = ""
         output_files: list[str] = []
+        output_filenames: list[str] = []
         any_failed = False
         timed_out = False
         successful_results: list[str] = []
@@ -247,6 +248,15 @@ class AgentLoop:
             }
             if result.get("file_id"):
                 tool_result["file_id"] = result["file_id"]
+                raw_result = result.get("raw")
+                if isinstance(raw_result, dict) and raw_result.get("filename"):
+                    filename = str(raw_result["filename"])
+                    tool_result["filename"] = filename
+                    output_filenames.append(filename.split("_", 1)[-1])
+                    try:
+                        tool_result["size_bytes"] = raw_result["path"].stat().st_size
+                    except (AttributeError, OSError):
+                        pass
                 output_files.append(result["file_id"])
             yield sse("tool_result", tool_result)
             yield sse(
@@ -309,6 +319,15 @@ class AgentLoop:
         elif timed_out or remaining() <= 0:
             final_text = "Task failed because it exceeded the 5-minute limit."
             status = AgentTaskStatus.FAILED
+        elif output_filenames:
+            files = ", ".join(output_filenames)
+            final_text = f"Generated {files}."
+            if any_failed:
+                final_text += " One or more steps failed; review the activity trace."
+            yield sse("token", {"content": final_text, "token": final_text})
+            status = (
+                AgentTaskStatus.FAILED if any_failed else AgentTaskStatus.COMPLETED
+            )
         else:
             base_prompt = effective_system_prompt or (
                 "You are Kavach AI, a sovereign on-premise AI workbench. "

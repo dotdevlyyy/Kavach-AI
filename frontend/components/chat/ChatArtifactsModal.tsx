@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { FileText, FileCode2, Image as ImageIcon, File, User, Bot, Download, X } from "lucide-react";
+import { FileText, FileCode2, Image as ImageIcon, File, User, Bot, Download } from "lucide-react";
 
 export interface Artifact {
   id: string;
@@ -19,8 +19,17 @@ interface ChatArtifactsModalProps {
   artifacts: Artifact[];
 }
 
+interface ArtifactPreview {
+  preview_kind: "text" | "image" | "unsupported";
+  text?: string;
+  truncated?: boolean;
+  image_url?: string;
+}
+
 export function ChatArtifactsModal({ open, onOpenChange, artifacts }: ChatArtifactsModalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ArtifactPreview | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   const getIcon = (type: string) => {
     const t = type.toLowerCase();
@@ -31,6 +40,21 @@ export function ChatArtifactsModal({ open, onOpenChange, artifacts }: ChatArtifa
   };
 
   const selectedArtifact = artifacts.find(a => a.id === selectedId) || artifacts[0];
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const downloadUrl = selectedArtifact ? `${apiBase}/api/files/download/${selectedArtifact.id}` : "";
+
+  useEffect(() => {
+    if (!open || !selectedArtifact || selectedArtifact.type.toLowerCase() === "pdf") return;
+    const controller = new AbortController();
+    setIsLoadingPreview(true);
+    setPreview(null);
+    fetch(`${apiBase}/api/files/${selectedArtifact.id}/preview`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Preview unavailable")))
+      .then((data: ArtifactPreview) => setPreview(data))
+      .catch(() => { if (!controller.signal.aborted) setPreview({ preview_kind: "unsupported" }); })
+      .finally(() => { if (!controller.signal.aborted) setIsLoadingPreview(false); });
+    return () => controller.abort();
+  }, [apiBase, open, selectedArtifact]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,38 +123,38 @@ export function ChatArtifactsModal({ open, onOpenChange, artifacts }: ChatArtifa
                     {getIcon(selectedArtifact.type)}
                     <span className="font-semibold">{selectedArtifact.name}</span>
                   </div>
-                  <button className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
+                  <a href={downloadUrl} download className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
                     <Download className="w-4 h-4" />
                     Download
-                  </button>
+                  </a>
                 </div>
                 <div className="flex-1 overflow-auto p-8 bg-muted/30 flex items-center justify-center">
-                  {selectedArtifact.origin === "user" && ['png', 'jpg', 'jpeg', 'webp'].includes(selectedArtifact.type.toLowerCase()) ? (
-                    <div className="max-w-3xl max-h-full border border-border shadow-sm rounded-lg overflow-hidden bg-white">
-                      <div className="p-8 flex flex-col items-center justify-center text-center gap-4 text-muted-foreground">
-                        <ImageIcon className="w-16 h-16 opacity-50" />
-                        <p>Image preview placeholder.<br/>(Preview rendering not currently wired to file blobs.)</p>
-                      </div>
-                    </div>
-                  ) : selectedArtifact.name.toLowerCase().endsWith('.pdf') || selectedArtifact.type.toLowerCase() === 'pdf' ? (
+                  {selectedArtifact.name.toLowerCase().endsWith('.pdf') || selectedArtifact.type.toLowerCase() === 'pdf' ? (
                     <div className="w-full h-full max-w-5xl bg-card border border-border shadow-sm rounded-lg overflow-hidden">
                       <iframe 
-                        src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/files/download/${selectedArtifact.id}#toolbar=0&navpanes=0`} 
+                        src={`${downloadUrl}#toolbar=0&navpanes=0`} 
                         className="w-full h-full"
                         title={selectedArtifact.name}
                       />
                     </div>
+                  ) : preview?.preview_kind === "image" ? (
+                    <>
+                      {/* Browser-served private uploads cannot use Next image optimization. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`${apiBase}${preview.image_url}`} alt={selectedArtifact.name} className="max-h-full max-w-full rounded-lg border border-border object-contain" />
+                    </>
+                  ) : preview?.preview_kind === "text" ? (
+                    <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg min-h-[60vh] p-8 font-mono text-sm text-foreground overflow-auto">
+                      <pre className="whitespace-pre-wrap break-words">{preview.text}</pre>
+                      {preview.truncated && <p className="mt-4 text-xs text-muted-foreground">Preview truncated. Download file to view all content.</p>}
+                    </div>
                   ) : (
                     <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg min-h-[60vh] p-8 font-mono text-sm text-foreground overflow-auto">
-                      {selectedArtifact.content ? (
-                        <pre className="whitespace-pre-wrap">{selectedArtifact.content}</pre>
-                      ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-4 opacity-70">
-                          {getIcon(selectedArtifact.type)}
-                          <p>Preview not available for this file type.</p>
-                          <p className="text-xs">Click Download to view.</p>
-                        </div>
-                      )}
+                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-4 opacity-70">
+                        {getIcon(selectedArtifact.type)}
+                        <p>{isLoadingPreview ? "Loading preview..." : "Preview not available for this file type."}</p>
+                        {!isLoadingPreview && <p className="text-xs">Download file to view it.</p>}
+                      </div>
                     </div>
                   )}
                 </div>

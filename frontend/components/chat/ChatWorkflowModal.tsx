@@ -5,7 +5,19 @@ import { XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { ChatMessage } from "@/lib/store";
 
-function WorkflowNode({ data }: { data: any }) {
+interface WorkflowData {
+  label: string;
+  description: string;
+  content: string;
+  footer: string;
+  accent: string;
+  accentText?: string;
+  glow?: string;
+  target: boolean;
+  source: boolean;
+}
+
+function WorkflowNode({ data }: { data: WorkflowData }) {
   return (
     <div className={`w-[280px] bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden relative z-10 transition-colors ${data.glow || "hover:border-primary/50"}`}>
       {data.target && (

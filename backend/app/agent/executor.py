@@ -65,7 +65,7 @@ async def _document_content(task: str, context: str, model: str) -> str:
         generated = await _generate_text(
                 request,
                 model,
-                "Write complete formatted content. Output only document content.",
+                "Write complete plain-text document content. Output only content. Do not use Markdown, HTML, code fences, headings marked with #, or source-evidence sections.",
             )
         generated = generated or task
         return f"{generated}\n\nSource Evidence\n{context}" if context else generated

@@ -2,23 +2,32 @@ export type StreamEventType = 'metadata' | 'task_created' | 'step' | 'tool_resul
 
 export interface StreamEvent {
   type: StreamEventType;
-  data: any;
+  data: Record<string, unknown>;
 }
 
 export async function consumeSSEStream(
   url: string,
-  body: any,
-  onEvent: (event: StreamEvent) => void
+  body: unknown,
+  onEvent: (event: StreamEvent) => void,
+  signal?: AbortSignal,
 ) {
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
+      let detail = response.statusText;
+      try {
+        const payload = (await response.json()) as { detail?: string };
+        detail = payload.detail || detail;
+      } catch {
+        // Preserve status text when the server returns a non-JSON error.
+      }
+      throw new Error(`API Error: ${response.status} ${detail}`);
     }
 
     const reader = response.body?.getReader();
@@ -47,7 +56,7 @@ export async function consumeSSEStream(
             try {
               const data = JSON.parse(dataStr);
               onEvent({ type: currentEvent as StreamEventType, data });
-            } catch (e) {
+            } catch {
               console.error('Failed to parse SSE data', dataStr);
             }
           }
@@ -56,6 +65,7 @@ export async function consumeSSEStream(
       }
     }
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
     console.warn("Stream consumption failed:", error);
     onEvent({ type: 'error', data: { detail: (error as Error).message } });
   }
@@ -71,11 +81,23 @@ export async function uploadFiles(files: File[]): Promise<string[]> {
       method: 'POST',
       body: formData
     });
-    if (!res.ok) throw new Error('Upload failed');
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const payload = (await res.json()) as { detail?: string };
+        detail = payload.detail || detail;
+      } catch {
+        // Preserve status text when the server returns a non-JSON error.
+      }
+      throw new Error(`Upload failed: ${res.status} ${detail}`);
+    }
     const data = await res.json();
-    return data.files.map((f: any) => f.id);
+    if (!Array.isArray(data.files) || data.files.length !== files.length) {
+      throw new Error('Upload failed: backend returned incomplete file metadata');
+    }
+    return data.files.map((file: { id: string }) => file.id);
   } catch (err) {
     console.error(err);
-    return [];
+    throw err instanceof Error ? err : new Error('Upload failed');
   }
 }

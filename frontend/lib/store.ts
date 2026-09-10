@@ -8,8 +8,12 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   model?: "llama3.2:1b" | "qwen2.5-coder:1.5b" | "qwen2.5vl:3b";
+  status?: "completed" | "failed" | "cancelled" | "stopped";
+  truncated?: boolean;
+  error?: string | null;
+  taskId?: string;
   steps?: AgentStep[];
-  deliverables?: { id: string; filename: string; type: string; url?: string; content?: string }[];
+  deliverables?: { id: string; filename: string; type: string; sizeBytes?: number; url?: string; content?: string }[];
   attachedFiles?: { id: string; name: string; type: string; url?: string }[];
 }
 
@@ -23,6 +27,8 @@ export interface ChatSession {
 interface ChatStore {
   chats: ChatSession[];
   activeChatId: string | null;
+  hasHydrated: boolean;
+  setHasHydrated: (hasHydrated: boolean) => void;
   setActiveChat: (id: string | null) => void;
   createChat: () => string;
   deleteChat: (id: string) => void;
@@ -34,10 +40,13 @@ interface ChatStore {
 
 export const useChatStore = create<ChatStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       chats: [],
       activeChatId: null,
+      hasHydrated: false,
       isSidebarCollapsed: false,
+
+      setHasHydrated: (hasHydrated) => set({ hasHydrated }),
 
       toggleSidebar: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
 
@@ -48,12 +57,7 @@ export const useChatStore = create<ChatStore>()(
           id: uuidv4(),
           title: 'New Conversation',
           updatedAt: Date.now(),
-          messages: [{
-            id: uuidv4(),
-            role: "assistant",
-            content: "Welcome to the Kavach AI Workbench. I am connected securely to the MRPL air-gapped network.\n\nYou can ask me to:\n- Analyze P&ID diagrams (using Qwen-VL)\n- Generate secure python scripts (using Qwen-Coder)\n- Summarize refinery SOPs (using Llama 3.2)\n\nHow can I assist you today?",
-            model: "llama3.2:1b"
-          }]
+          messages: []
         };
         set((state) => ({
           chats: [newChat, ...state.chats],
@@ -107,6 +111,7 @@ export const useChatStore = create<ChatStore>()(
     }),
     {
       name: 'kavach-chat-storage',
+      onRehydrateStorage: () => (state) => state?.setHasHydrated(true),
     }
   )
 );

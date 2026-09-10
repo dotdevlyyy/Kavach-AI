@@ -4,6 +4,18 @@ import "@xyflow/react/dist/style.css";
 import { XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
+interface WorkflowData {
+  label: string;
+  description: string;
+  content: string;
+  footer: string;
+  accent: string;
+  accentText?: string;
+  glow?: string;
+  target: boolean;
+  source: boolean;
+}
+
 const nodeIds = {
   start: "start",
   classify: "classify",
@@ -114,7 +126,7 @@ const initialEdges = [
   { id: "e7", source: nodeIds.routeTechnical, target: nodeIds.complete, animated: true },
 ];
 
-function WorkflowNode({ data }: { data: any }) {
+function WorkflowNode({ data }: { data: WorkflowData }) {
   return (
     <div className={`w-[280px] bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden relative z-10 transition-colors ${data.glow || "hover:border-primary/50"}`}>
       {data.target && (

@@ -40,13 +40,14 @@ export function Topbar() {
           onClick={toggleSidebar}
           className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-foreground transition-colors mr-1"
           title="Toggle Sidebar"
+          aria-label="Toggle sidebar"
         >
           <PanelLeft className="w-5 h-5" />
         </button>
         <h1 className="text-foreground font-medium">MRPL Agentic Workbench</h1>
         <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-xs font-medium text-primary">Models Preloaded (~4.1 GB)</span>
+          <span className="text-xs font-medium text-primary">Local model host</span>
         </div>
       </div>
 
@@ -61,7 +62,9 @@ export function Topbar() {
         <div className="relative" ref={dropdownRef}>
           <button 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className={`w-9 h-9 rounded-full border flex items-center justify-center text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
+            aria-label="Open operator menu"
+            aria-expanded={isDropdownOpen}
+            className={`w-9 h-9 rounded-full border flex items-center justify-center text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
               isDropdownOpen 
                 ? "bg-primary text-primary-foreground border-primary" 
                 : "bg-sidebar-accent border-border text-sidebar-foreground hover:bg-sidebar-accent/80 hover:border-primary/50"

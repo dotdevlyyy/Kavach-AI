@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/shared/Sidebar";
 import { Topbar } from "@/components/shared/Topbar";
 import { Toaster } from "sonner";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Kavach AI | MRPL Workbench",
@@ -21,12 +18,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} bg-background text-foreground flex h-screen overflow-hidden`}>
+      <body className="bg-background text-foreground flex min-h-[100dvh] overflow-hidden">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <Sidebar />
           <div className="flex-1 flex flex-col min-w-0 bg-background">
             <Topbar />
-            <main className="flex-1 overflow-auto bg-background flex flex-col min-h-0">
+            <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:bg-background focus:px-4 focus:py-2 focus:text-foreground">Skip to main content</a>
+            <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto bg-background flex flex-col min-h-0">
               {children}
             </main>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, Target, Wrench, Eye, Lightbulb } from "lucide-react";
+import { Check, ChevronDown, Circle, FileText, Lightbulb, Pencil, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export type AgentStepType = "plan" | "act" | "observe" | "reflect";
 
@@ -10,66 +10,34 @@ export interface AgentStep {
   type: AgentStepType;
   content: string;
   isComplete: boolean;
+  isFailed?: boolean;
 }
 
-interface AgentStepCardProps {
-  step: AgentStep;
-}
+const icons = { plan: Lightbulb, act: Pencil, observe: FileText, reflect: Circle };
 
-export function AgentStepCard({ step }: AgentStepCardProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
-
-  const getStepConfig = (type: AgentStepType) => {
-    switch (type) {
-      case "plan":
-        return { icon: Target, label: "Plan", color: "text-blue-400", bg: "bg-blue-400/10" };
-      case "act":
-        return { icon: Wrench, label: "Action", color: "text-amber-500", bg: "bg-amber-500/10" };
-      case "observe":
-        return { icon: Eye, label: "Observation", color: "text-emerald-500", bg: "bg-emerald-500/10" };
-      case "reflect":
-        return { icon: Lightbulb, label: "Reflection", color: "text-purple-400", bg: "bg-purple-400/10" };
-    }
-  };
-
-  const config = getStepConfig(step.type);
-  const Icon = config.icon;
+export function AgentActivity({ steps, status }: { steps: AgentStep[]; status: "working" | "complete" | "failed" }) {
+  const [open, setOpen] = useState(status === "working");
+  useEffect(() => {
+    setOpen(status === "working");
+  }, [status]);
+  const failedStep = steps.find((step) => step.isFailed);
+  const summary = status === "working" ? "Working through it..." : status === "failed" ? `Failed at step ${failedStep?.id || "?"}` : `Completed ${steps.length} ${steps.length === 1 ? "step" : "steps"}`;
 
   return (
-    <div className="mb-2 bg-white rounded-xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100">
-      {/* Header */}
-      <div 
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-center gap-3">
-          <div className="p-1 rounded-md text-gray-500">
-            <Icon className="w-4 h-4" />
-          </div>
-          <span className="font-medium text-sm text-gray-700">
-            {config.label}
-          </span>
-          {!step.isComplete && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-          )}
-          {step.isComplete && (
-            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-100">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              Completed
-            </span>
-          )}
-        </div>
-        <div className="text-gray-400">
-          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </div>
-      </div>
-
-      {/* Content Body */}
-      {isExpanded && (
-        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 text-sm text-gray-600 font-mono whitespace-pre-wrap">
-          {step.content || <span className="text-gray-400 italic">Thinking...</span>}
-        </div>
-      )}
-    </div>
+    <section className="w-full px-1 py-2 text-sm" aria-busy={status === "working"}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="flex min-h-7 items-center gap-1.5 text-left font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span>{summary}</span>
+        {status !== "working" && <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />}
+      </button>
+      {open && <div className="mt-2 space-y-1.5" role="list">
+        {steps.map((step) => {
+          const Icon = step.isFailed ? X : step.isComplete ? Check : icons[step.type];
+          return <div key={step.id} className="flex min-w-0 items-center gap-2.5" role="listitem">
+            <Icon className={`size-4 shrink-0 ${step.isFailed ? "text-destructive" : step.isComplete ? "text-muted-foreground" : "animate-pulse text-muted-foreground"}`} aria-hidden />
+            <span title={step.content || step.type} className={`min-w-0 truncate font-medium ${step.isFailed ? "text-destructive" : "text-foreground"}`}>{step.content || step.type}</span>
+          </div>;
+        })}
+      </div>}
+    </section>
   );
 }
