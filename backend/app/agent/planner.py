@@ -51,6 +51,23 @@ def get_fallback_plan(
     task_description: str, file_ids: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     task_lower = task_description.lower()
+    code_request = any(
+        keyword in task_lower
+        for keyword in ("python", "execute code", "run code", "calculate", "program")
+    )
+    if code_request:
+        return {
+            "goal": task_description,
+            "steps": [
+                {
+                    "step_number": 1,
+                    "title": "Generate and execute Python code",
+                    "description": task_description,
+                    "suggested_tool": "code_execute",
+                    "tool_input": {"task": task_description},
+                }
+            ],
+        }
     if "pdf" in task_lower:
         doc_tool = "generate_pdf_document"
     elif "excel" in task_lower or "spreadsheet" in task_lower or "csv" in task_lower:
@@ -137,7 +154,9 @@ def _normalize_plan(parsed: Dict[str, Any], task_description: str) -> Dict[str, 
     normalized = []
     task_lower = task_description.lower()
     override_tool = None
-    if "pdf" in task_lower:
+    if any(keyword in task_lower for keyword in ("python", "execute code", "run code")):
+        override_tool = "code_execute"
+    elif "pdf" in task_lower:
         override_tool = "generate_pdf_document"
     elif "excel" in task_lower or "spreadsheet" in task_lower or "csv" in task_lower:
         override_tool = "generate_excel_sheet"
@@ -149,6 +168,7 @@ def _normalize_plan(parsed: Dict[str, Any], task_description: str) -> Dict[str, 
             continue
         tool = step.get("suggested_tool") or "none"
         if override_tool and tool in {
+            "code_execute",
             "generate_word_document",
             "generate_excel_sheet",
             "generate_presentation",
@@ -185,6 +205,13 @@ class AgentPlanner:
         task_lower = task_description.lower()
 
         # Heuristic: If it's a simple document generation request, bypass the erratic LLM planner
+        if not file_ids and any(
+            keyword in task_lower
+            for keyword in ("python", "execute code", "run code", "calculate", "program")
+        ):
+            logger.info("Bypassing LLM planner for direct code execution request.")
+            return get_fallback_plan(task_description)
+
         if not file_ids and any(
             verb in task_lower for verb in ["generate", "create", "make", "write", "build", "draft"]
         ) and any(

@@ -728,6 +728,32 @@ def test_t24_resolve_kwargs_meta_keys_pass_through():
     assert out["query"] == "real task"
 
 
+def test_t24_resolve_kwargs_ignores_attachment_metadata_for_document_tool():
+    def tool(title: str, content: str):
+        return title, content
+
+    out = asyncio.run(
+        _resolve_kwargs(
+            tool,
+            {
+                "file_id": "python_code_snippet",
+                "task": "Write report",
+                "step_title": "Report",
+            },
+        )
+    )
+    assert "file_id" not in out
+    assert out["title"] == "Report"
+
+
+def test_code_request_fallback_uses_execution_tool():
+    from app.agent.planner import get_fallback_plan
+
+    plan = get_fallback_plan("Generate Python code to sum two numbers and execute it")
+    assert len(plan["steps"]) == 1
+    assert plan["steps"][0]["suggested_tool"] == "code_execute"
+
+
 def test_agent_document_receives_prior_evidence(monkeypatch, tmp_path):
     from docx import Document
 

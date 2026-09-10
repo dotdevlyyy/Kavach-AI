@@ -21,7 +21,7 @@ DOC_TOOLS = {
     "generate_presentation",
     "generate_pdf_document",
 }
-META_KEYS = {"task", "step_title", "context"}
+META_KEYS = {"task", "step_title", "context", "file_id", "file_ids"}
 VISION_TOOLS = {"extract_text_from_image", "analyze_engineering_diagram"}
 MAX_GENERATED_TEXT_CHARS = 200_000
 

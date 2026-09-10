@@ -2,6 +2,7 @@
 
 import asyncio
 import shutil
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -26,38 +27,31 @@ def _result(success: bool, exit_code: int, stdout: str = "", stderr: str = "") -
 
 
 async def _image_is_local(docker: str) -> bool:
-    process = await asyncio.create_subprocess_exec(
-        docker,
-        "image",
-        "inspect",
-        SANDBOX_IMAGE,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
     try:
-        return (
-            await asyncio.wait_for(process.wait(), timeout=DOCKER_CONTROL_TIMEOUT_SECONDS) == 0
+        result = await asyncio.to_thread(
+            subprocess.run,
+            [docker, "image", "inspect", SANDBOX_IMAGE],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=DOCKER_CONTROL_TIMEOUT_SECONDS,
+            check=False,
         )
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
         return False
 
 
 async def _remove_container(docker: str, name: str) -> None:
-    process = await asyncio.create_subprocess_exec(
-        docker,
-        "rm",
-        "-f",
-        name,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
     try:
-        await asyncio.wait_for(process.wait(), timeout=DOCKER_CONTROL_TIMEOUT_SECONDS)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
+        await asyncio.to_thread(
+            subprocess.run,
+            [docker, "rm", "-f", name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=DOCKER_CONTROL_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
         logger.warning(f"Timed out removing sandbox container {name}")
 
 
@@ -129,40 +123,31 @@ async def execute_python_code(code: str, timeout: int = 30) -> dict[str, Any]:
             "/workspace/script.py",
         ]
 
-        process = None
         try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout_task = asyncio.create_task(_read_limited(process.stdout))
-            stderr_task = asyncio.create_task(_read_limited(process.stderr))
             try:
-                stdout_bytes, stderr_bytes, exit_code = await asyncio.wait_for(
-                    asyncio.gather(stdout_task, stderr_task, process.wait()), timeout=timeout
+                completed = await asyncio.to_thread(
+                    subprocess.run,
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout,
+                    check=False,
                 )
-            except _OutputLimitExceeded:
-                process.kill()
-                await process.wait()
-                return _result(False, -1, stderr="Execution output exceeded 1 MB.")
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
+            except subprocess.TimeoutExpired:
                 return _result(
                     False,
                     -1,
                     stderr=f"Execution timed out after {timeout} seconds.",
                 )
-
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
-            return _result(exit_code == 0, exit_code, stdout, stderr)
+            if len(completed.stdout) > MAX_OUTPUT_BYTES or len(completed.stderr) > MAX_OUTPUT_BYTES:
+                return _result(False, -1, stderr="Execution output exceeded 1 MB.")
+            stdout = completed.stdout.decode("utf-8", errors="replace")
+            stderr = completed.stderr.decode("utf-8", errors="replace")
+            return _result(completed.returncode == 0, completed.returncode, stdout, stderr)
+        except (subprocess.TimeoutExpired, OSError):
+            return _result(False, -1, stderr=f"Execution timed out after {timeout} seconds.")
         except Exception as exc:
             logger.exception(f"Secure code sandbox failed: {exc}")
             return _result(False, 1, stderr="Secure code sandbox failed.")
         finally:
-            if process and process.returncode is None:
-                process.kill()
-                await process.wait()
             await asyncio.shield(_remove_container(docker, container_name))
