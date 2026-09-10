@@ -291,7 +291,7 @@ async def hybrid_search(
     return results
 ```
 
-Cosine similarity is computed inline in `search_vector` (`app/rag/retriever.py:53-86`), not as a separate helper. The brute-force scan is capped at 200 chunks per query — `ponytail:` upgrade to sqlite-vss when the chunk count grows past that ceiling.
+Cosine similarity is computed inline in `search_vector` (`app/rag/retriever.py`), not as a separate helper. The current implementation scans every embedded chunk; move to a vector index when measured dataset size makes that too slow.
 
 ### RAG Prompt Construction
 
@@ -313,15 +313,19 @@ There is no separate `app/rag/prompt.py` module. The agent loop's planner can al
 1. User uploads document via /knowledge page
 2. POST /api/knowledge/index with file(s)
 3. Backend:
-   a. Save file to ./data/knowledge/
+   a. Keep uploaded file in `./data/uploads/`
    b. Parse text (PyMuPDF for PDF, raw for TXT/MD)
    c. If scanned (no text extracted), use Qwen2.5-VL for OCR
-   d. Chunk text (512 tokens, 50 token overlap)
+   d. Chunk text (512 words, 64-word overlap by default)
    e. Embed each chunk via Ollama
    f. Store chunks + embeddings in SQLite
-   g. FTS5 trigger auto-indexes for full-text search
+   g. Ingestion transaction explicitly inserts FTS5 rows (no triggers)
 4. Frontend shows indexing progress + chunk count
 ```
+
+`Document.source_upload_id` identifies the originating upload. A partial unique SQLite index makes
+indexing idempotent under concurrent requests; duplicates return HTTP 409. Startup applies this
+additive column/index migration to existing databases without rewriting existing document rows.
 
 ### Search Flow
 
@@ -361,4 +365,4 @@ There is no separate `app/rag/prompt.py` module. The agent loop's planner can al
 | Hybrid search (full pipeline) | < 500ms | FTS5 + semantic + RRF |
 | Full ingestion (10-page PDF) | ~5-10s | Parse + chunk + embed |
 
-> **Vector search ceiling (ponytail):** `app/rag/retriever.py:search_vector` is a brute-force scan capped at 200 embedded chunks per query. Fine for a single org's KB; switch to `sqlite-vss` (or any real vector store) when the KB grows past ~200 chunks with embeddings.
+> **Vector search scaling:** `search_vector` currently scans every embedded chunk for complete recall. Switch to a vector index when measured KB size makes the scan too slow.

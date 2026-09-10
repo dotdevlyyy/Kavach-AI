@@ -1,24 +1,29 @@
-from app.core.paths import resolve_data_path
+from app.core.paths import resolve_agent_workspace_path
 from app.tools.registry import register_tool
+
+MAX_FILE_BYTES = 1024 * 1024
 
 
 @register_tool("file_read")
-def file_read(filepath: str) -> str:
+def file_read(file_path: str) -> str:
     """Read contents of a file from the data directory.
 
     Args:
-        filepath: Path to the file, relative to backend/data/
+        file_path: Path relative to backend/data/workspace/
     """
     try:
-        target = resolve_data_path(filepath)
+        target = resolve_agent_workspace_path(file_path)
     except ValueError:
         return "Error: Access denied. Cannot read outside of data directory."
 
     if not target.exists():
-        return f"Error: File {filepath} not found."
+        return f"Error: File {file_path} not found."
 
     if not target.is_file():
-        return f"Error: {filepath} is a directory."
+        return f"Error: {file_path} is a directory."
+
+    if target.stat().st_size > MAX_FILE_BYTES:
+        return "Error: File exceeds 1 MB read limit."
 
     try:
         with open(target, "r", encoding="utf-8") as f:

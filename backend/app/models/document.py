@@ -18,6 +18,7 @@ class Document(models.Model):
     file_type = fields.CharField(max_length=50)
     file_size = fields.IntField()
     mime_type = fields.CharField(max_length=200)
+    source_upload_id = fields.UUIDField(null=True)
     is_knowledge_base = fields.BooleanField(default=False)
     created_at = fields.DatetimeField(auto_now_add=True)
 

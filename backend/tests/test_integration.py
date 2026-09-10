@@ -13,7 +13,8 @@ from app.main import app
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
-    from app.api import chat, files
+    from app.api import files, knowledge
+    from app.core import paths
     from app.core.database import TORTOISE_ORM
     from app.tools import image_analyze, ocr_extract
 
@@ -22,7 +23,8 @@ def client(tmp_path_factory):
     uploads.mkdir()
     TORTOISE_ORM["connections"]["default"]["credentials"]["file_path"] = str(test_data / "test.db")
     files.UPLOAD_DIR = uploads
-    chat.UPLOAD_DIR = uploads
+    knowledge.UPLOAD_DIR = uploads
+    paths.UPLOAD_DIR = uploads
     image_analyze.UPLOAD_DIR = uploads
     ocr_extract.UPLOAD_DIR = uploads
     with TestClient(app) as c:
@@ -63,6 +65,32 @@ def test_file_upload_metadata_download_preview(client):
     preview = client.get(f"/api/files/{file_id}/preview")
     assert preview.status_code == 200
     assert preview.json()["preview_kind"] == "text"
+
+
+def test_chat_rejects_uploaded_xlsx_before_streaming(client):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.active.append(["value"])
+    payload = io.BytesIO()
+    workbook.save(payload)
+    payload.seek(0)
+    uploaded = client.post(
+        "/api/files/upload",
+        files={
+            "files": (
+                "unsupported.xlsx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert uploaded.status_code == 200
+    file_id = uploaded.json()["files"][0]["id"]
+
+    response = client.post("/api/chat", json={"message": "Read it", "files": [file_id]})
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unsupported attachment type: xlsx"
 
 
 def test_agent_execute_streams_full_lifecycle(client):
@@ -148,12 +176,23 @@ def test_knowledge_ingest_e2e(client):
     ids = [d["id"] for d in docs.json()["documents"]]
     assert body["document_id"] in ids
 
+    duplicate = client.post("/api/knowledge/index", json={"file_id": file_id})
+    assert duplicate.status_code == 409
+
     search = client.post(
         "/api/knowledge/search",
         json={"query": "Crude Distillation Unit SOP", "search_type": "hybrid"},
     )
     assert search.status_code == 200
     assert search.json()["results"][0]["chunk_id"]
+
+    fts = client.post(
+        "/api/knowledge/search",
+        json={"query": "Crude Distillation Unit SOP", "search_type": "fts"},
+    )
+    assert fts.status_code == 200
+    assert fts.json()["results"][0]["document_id"] == body["document_id"]
+    assert fts.json()["results"][0]["document_name"] == "sop.txt"
 
 
 def test_upload_rejects_spoofed_mime(client):

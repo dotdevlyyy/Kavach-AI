@@ -48,6 +48,13 @@ async def init_sqlite_pragmas():
     await conn.execute_query(
         "CREATE INDEX IF NOT EXISTS idx_network_logs_timestamp ON network_logs(timestamp);"
     )
+    columns = await conn.execute_query_dict("PRAGMA table_info(documents);")
+    if not any(column["name"] == "source_upload_id" for column in columns):
+        await conn.execute_query("ALTER TABLE documents ADD COLUMN source_upload_id CHAR(36);")
+    await conn.execute_query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_source_upload "
+        "ON documents(source_upload_id) WHERE source_upload_id IS NOT NULL;"
+    )
     logger.info("✅ SQLite WAL mode and performance pragmas set")
 
 

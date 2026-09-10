@@ -11,6 +11,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.ollama_client import ollama_client
+from app.schemas.responses import HealthResponse
 
 router = APIRouter(tags=["health"])
 
@@ -18,12 +19,11 @@ router = APIRouter(tags=["health"])
 _START_TIME = time.monotonic()
 
 
-@router.get("/api/health")
+@router.get("/api/health", response_model=HealthResponse)
 async def health_check():
     """System, Database, and Ollama health check endpoint."""
     ollama_ok, latency = await ollama_client.is_healthy()
-    ps = await ollama_client.running_models()
-    models_loaded = {m["name"]: True for m in ps}
+    inventory = await ollama_client.model_inventory(connected=ollama_ok)
 
     db_status = "not_initialized"
     try:
@@ -38,8 +38,10 @@ async def health_check():
         db_status = "error"
 
     db_ok = db_status == "connected"
-    is_healthy = ollama_ok and db_ok
-    is_degraded = db_ok and not ollama_ok
+    required_installed = all(model["installed"] is True for model in inventory)
+    required_ready = all(model["ready"] is True for model in inventory)
+    is_healthy = ollama_ok and db_ok and required_ready
+    is_degraded = db_ok and ollama_ok and required_installed and not required_ready
 
     # Disk usage for the data directory
     try:
@@ -71,5 +73,5 @@ async def health_check():
             "status": network["status"],
             "timestamp": network["timestamp"],
         },
-        "models": models_loaded,
+        "models": {model["name"]: model for model in inventory},
     }

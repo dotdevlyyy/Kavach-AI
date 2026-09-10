@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from pathlib import Path
 
@@ -44,19 +45,21 @@ async def analyze_engineering_diagram(
         with open(target, "rb") as f:
             b64_image = base64.b64encode(f.read()).decode("utf-8")
 
-        response = await ollama_client.chat(
-            model="qwen2.5vl:3b",
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Analyze this engineering diagram carefully and answer this query: {query}"
-                    ),
-                    "images": [b64_image],
-                }
-            ],
-            keep_alive=-1,
-        )
-        return response.message.content
+        async with asyncio.timeout(120):
+            response = await ollama_client.chat(
+                model="qwen2.5vl:3b",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Analyze this engineering diagram carefully and answer this query: "
+                            f"{query}"
+                        ),
+                        "images": [b64_image],
+                    }
+                ],
+                keep_alive=-1,
+            )
+        return response.message.content[:100_000]
     except Exception:
         return "Error analyzing diagram."

@@ -5,10 +5,13 @@ Pure-python only; DB-touching paths are mocked or skipped.
 """
 
 import asyncio
+import os
+import shutil
+import subprocess
 
 import pytest
 
-from app.agent.executor import _resolve_kwargs
+from app.agent.executor import _resolve_kwargs, executor
 from app.agent.observer import observer
 from app.agent.planner import _extract_json, _normalize_plan
 from app.api.network import is_local_address
@@ -18,9 +21,15 @@ from app.rag.embedder import deserialize_embedding, serialize_embedding
 from app.rag.parser import parse_csv, parse_document, parse_txt
 from app.router.classifier import classify_task
 from app.router.router import route_request
-from app.tools.code_execute import execute_python_code
+from app.tools.code_execute import (
+    MAX_OUTPUT_BYTES,
+    _OutputLimitExceeded,
+    _read_limited,
+    execute_python_code,
+)
 from app.tools.doc_generate import (
     generate_excel_sheet,
+    generate_pdf_document,
     generate_presentation,
     generate_word_document,
 )
@@ -272,14 +281,14 @@ def test_t9_observer_failure():
 
 
 def test_t10_file_read_blocks_traversal(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.AGENT_WORKSPACE_DIR", tmp_path)
     (tmp_path / "ok.txt").write_text("hi", encoding="utf-8")
     res = file_read("../etc/passwd")
     assert "Access denied" in res
 
 
 def test_t10_file_read_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.AGENT_WORKSPACE_DIR", tmp_path)
     res = file_read("nope_does_not_exist.txt")
     assert "not found" in res.lower()
 
@@ -288,17 +297,31 @@ def test_t10_file_read_missing(monkeypatch, tmp_path):
 
 
 def test_t11_file_write_blocks_traversal(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.AGENT_WORKSPACE_DIR", tmp_path)
     res = file_write("../escape.txt", "pwn")
     assert "Access denied" in res
     assert not (tmp_path.parent / "escape.txt").exists()
 
 
 def test_t11_file_write_writes_inside(monkeypatch, tmp_path):
-    monkeypatch.setattr("app.core.paths.DATA_ROOT", tmp_path)
+    monkeypatch.setattr("app.core.paths.AGENT_WORKSPACE_DIR", tmp_path)
     res = file_write("safe.txt", "ok")
     assert "Successfully wrote" in res
     assert (tmp_path / "safe.txt").exists()
+
+
+def test_t11_file_write_cannot_target_database_or_overwrite(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    database = tmp_path / "kavach.db"
+    database.write_text("database", encoding="utf-8")
+    monkeypatch.setattr("app.core.paths.AGENT_WORKSPACE_DIR", workspace)
+
+    assert "Access denied" in file_write("../kavach.db", "destroy")
+    assert database.read_text(encoding="utf-8") == "database"
+    assert "Successfully wrote" in file_write("report.txt", "first")
+    assert "Refusing to overwrite" in file_write("report.txt", "second")
+    assert (workspace / "report.txt").read_text(encoding="utf-8") == "first"
 
 
 def test_t11_path_guard_rejects_sibling_prefix(tmp_path):
@@ -359,6 +382,21 @@ def test_t13_pptx(tmp_path, monkeypatch):
     assert (tmp_path / res["filename"]).exists()
 
 
+def test_t13_pdf(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.tools.doc_generate.OUTPUT_DIR", tmp_path)
+    res = generate_pdf_document(title="Inspection", content="Pressure vessel report")
+    assert res["status"] == "ok"
+    assert (tmp_path / res["filename"]).read_bytes().startswith(b"%PDF-")
+
+
+def test_t13_pdf_rejects_unshaped_script(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.tools.doc_generate.OUTPUT_DIR", tmp_path)
+    res = generate_pdf_document(title="रिपोर्ट", content="परीक्षण")
+    assert res["status"] == "error"
+    assert "shaping" in res["error"]
+    assert not list(tmp_path.iterdir())
+
+
 # ─── T14: is_local_address ──────────────────────────────────────────────
 
 
@@ -399,6 +437,15 @@ def test_t14_malformed_connection_makes_verdict_unknown(monkeypatch):
     summary = network.get_network_summary()
     assert summary["status"] == "unknown"
     assert summary["is_air_gapped"] is None
+
+
+def test_model_inventory_is_unknown_when_ollama_unreachable():
+    from app.core.ollama_client import ollama_client
+
+    inventory = asyncio.run(ollama_client.model_inventory(connected=False))
+    assert inventory
+    assert all(model["installed"] is None and model["loaded"] is None for model in inventory)
+    assert all(model["ready"] is False for model in inventory)
 
 
 def test_config_reads_documented_environment(monkeypatch):
@@ -679,3 +726,214 @@ def test_t24_resolve_kwargs_meta_keys_pass_through():
 
     out = asyncio.run(_resolve_kwargs(tool, {"task": "real task", "step_title": "Step 1"}))
     assert out["query"] == "real task"
+
+
+def test_agent_document_receives_prior_evidence(monkeypatch, tmp_path):
+    from docx import Document
+
+    from app.tools import doc_generate
+
+    async def echo_request(task, model, instruction):
+        return task
+
+    monkeypatch.setattr("app.agent.executor._generate_text", echo_request)
+    monkeypatch.setattr(doc_generate, "OUTPUT_DIR", tmp_path)
+    result = asyncio.run(
+        executor.execute_step(
+            3,
+            "generate_word_document",
+            {
+                "task": "Build report",
+                "step_title": "Evidence report",
+                "context": "OCR_UNIQUE_42\nKB_CITATION_77",
+            },
+        )
+    )
+    text = "\n".join(p.text for p in Document(result["raw"]["path"]).paragraphs)
+    assert "OCR_UNIQUE_42" in text
+    assert "KB_CITATION_77" in text
+
+
+def test_agent_vision_batch_uses_every_attachment(monkeypatch):
+    async def fake_ocr(filepath="", file_id=""):
+        return f"OCR:{file_id}"
+
+    monkeypatch.setitem(
+        __import__("app.agent.executor", fromlist=["_TOOL_REGISTRY"])._TOOL_REGISTRY,
+        "extract_text_from_image",
+        fake_ocr,
+    )
+    result = asyncio.run(
+        executor.execute_step(
+            1,
+            "extract_text_from_image",
+            {"file_ids": ["attachment-a", "attachment-b"]},
+        )
+    )
+    assert "OCR:attachment-a" in result["output"]
+    assert "OCR:attachment-b" in result["output"]
+
+
+def test_agent_vision_batch_propagates_attachment_failure(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "app.agent.executor.execute_tool",
+        AsyncMock(return_value="Error extracting text from image."),
+    )
+    result = asyncio.run(
+        executor.execute_step(
+            1,
+            "extract_text_from_image",
+            {"file_ids": ["attachment-a", "attachment-b"]},
+        )
+    )
+    assert result["success"] is False
+
+
+def test_agent_loop_carries_ocr_and_kb_evidence_into_document(monkeypatch, tmp_path):
+    from docx import Document
+
+    from app.agent.loop import agent_loop
+    from app.schemas.common import RoutingMetadata
+    from app.tools import doc_generate
+    from app.tools.registry import _TOOL_REGISTRY
+
+    async def unavailable_database(*args, **kwargs):
+        raise RuntimeError("test database unavailable")
+
+    async def fake_route(**kwargs):
+        return "llama3.2:1b", RoutingMetadata(
+            task_type="document_draft", confidence=1.0, reasoning="test"
+        )
+
+    async def fake_plan(*args, **kwargs):
+        return {
+            "goal": "report",
+            "steps": [
+                {
+                    "title": "OCR",
+                    "suggested_tool": "extract_text_from_image",
+                    "tool_input": {"file_ids": ["scan-a", "scan-b"]},
+                },
+                {
+                    "title": "KB",
+                    "suggested_tool": "search_knowledge_base",
+                    "tool_input": {"query": "inspection"},
+                },
+                {
+                    "title": "Report",
+                    "suggested_tool": "generate_word_document",
+                    "tool_input": {"title": "Evidence"},
+                },
+            ],
+        }
+
+    async def fake_ocr(filepath="", file_id=""):
+        return f"OCR_UNIQUE_{file_id}"
+
+    async def fake_kb(query=""):
+        return "KB_CITATION_77"
+
+    async def echo_request(task, model, instruction):
+        return task
+
+    async def fake_chat_stream(**kwargs):
+        yield {"message": {"content": "done"}}
+
+    monkeypatch.setattr("app.agent.loop.Conversation.get_or_create", unavailable_database)
+    monkeypatch.setattr("app.agent.loop.route_request", fake_route)
+    monkeypatch.setattr("app.agent.loop.planner.create_plan", fake_plan)
+    monkeypatch.setattr("app.agent.loop.ollama_client.chat_stream", fake_chat_stream)
+    monkeypatch.setattr("app.agent.executor._generate_text", echo_request)
+    monkeypatch.setattr(doc_generate, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setitem(_TOOL_REGISTRY, "extract_text_from_image", fake_ocr)
+    monkeypatch.setitem(_TOOL_REGISTRY, "search_knowledge_base", fake_kb)
+
+    async def run():
+        return [
+            event
+            async for event in agent_loop.run_agent_stream(
+                "Build evidence report", file_ids=["scan-a", "scan-b"], max_steps=3
+            )
+        ]
+
+    events = asyncio.run(run())
+    assert '"status": "completed"' in events[-1]
+    output = next(tmp_path.glob("*.docx"))
+    text = "\n".join(paragraph.text for paragraph in Document(output).paragraphs)
+    assert "OCR_UNIQUE_scan-a" in text
+    assert "OCR_UNIQUE_scan-b" in text
+    assert "KB_CITATION_77" in text
+
+
+def test_sandbox_reader_stops_at_output_limit():
+    async def run():
+        stream = asyncio.StreamReader()
+        stream.feed_data(b"x" * (MAX_OUTPUT_BYTES + 1))
+        stream.feed_eof()
+        await _read_limited(stream)
+
+    with pytest.raises(_OutputLimitExceeded):
+        asyncio.run(run())
+
+
+@pytest.mark.skipif(
+    os.getenv("KAVACH_RUN_DOCKER_TESTS") != "1" or shutil.which("docker") is None,
+    reason="set KAVACH_RUN_DOCKER_TESTS=1 with Docker available",
+)
+def test_live_sandbox_security_boundaries_and_cleanup():
+    async def run():
+        success = await execute_python_code("print('sandbox-ok')")
+        assert success["success"] is True
+        assert success["stdout"].strip() == "sandbox-ok"
+
+        isolated = await execute_python_code(
+            "import os, socket\n"
+            "print(os.listdir('/workspace'))\n"
+            "try:\n"
+            " socket.create_connection(('1.1.1.1', 53), 1)\n"
+            " print('network-open')\n"
+            "except OSError:\n"
+            " print('network-blocked')\n"
+        )
+        assert isolated["success"] is True
+        assert "['script.py']" in isolated["stdout"]
+        assert "network-blocked" in isolated["stdout"]
+
+        flooded = await execute_python_code("print('x' * 1100000)")
+        assert flooded["success"] is False
+        assert "exceeded 1 MB" in flooded["output"]
+
+        timed_out = await execute_python_code("import time; time.sleep(10)", timeout=1)
+        assert timed_out["success"] is False
+        assert "timed out" in timed_out["output"]
+
+        cancelled = asyncio.create_task(
+            execute_python_code("import time; time.sleep(10)", timeout=20)
+        )
+        await asyncio.sleep(1)
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+
+    asyncio.run(run())
+    docker = shutil.which("docker")
+    remaining = subprocess.run(
+        [docker, "ps", "--filter", "name=kavach-sandbox-", "--quiet"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=True,
+    )
+    assert remaining.stdout.strip() == ""
+
+
+def test_excel_escapes_formula_cells(tmp_path, monkeypatch):
+    from openpyxl import load_workbook
+
+    monkeypatch.setattr("app.tools.doc_generate.OUTPUT_DIR", tmp_path)
+    result = generate_excel_sheet("Safe", ["value"], [["=HYPERLINK(\"bad\")"]])
+    cell = load_workbook(result["path"], data_only=False).active["A2"]
+    assert cell.value.startswith("'=")
+    assert cell.data_type == "s"

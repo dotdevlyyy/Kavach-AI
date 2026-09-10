@@ -4,6 +4,7 @@ Uses Ollama's embed API to generate vector embeddings for RAG chunks.
 """
 
 import array
+import asyncio
 
 from loguru import logger
 
@@ -21,7 +22,9 @@ async def generate_embedding(text: str) -> list[float]:
         List of floats representing the embedding vector. Empty list on error.
     """
     try:
-        return await ollama_client.embed(model=settings.embed_model, text=text)
+        return await asyncio.wait_for(
+            ollama_client.embed(model=settings.embed_model, text=text), timeout=60
+        )
     except Exception as e:
         logger.error(f"Embedding generation error: {e}")
         return []
@@ -32,7 +35,9 @@ async def generate_embeddings(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     try:
-        embeddings = await ollama_client.embed_many(model=settings.embed_model, texts=texts)
+        embeddings = await asyncio.wait_for(
+            ollama_client.embed_many(model=settings.embed_model, texts=texts), timeout=60
+        )
         if len(embeddings) != len(texts):
             raise ValueError("Embedding count mismatch")
         return embeddings

@@ -18,6 +18,10 @@ class OllamaManager:
         self.client = AsyncClient(host=self.host)
         self._preloaded: set[str] = set()
 
+    @staticmethod
+    def _has_model(name: str, available: set[str | None]) -> bool:
+        return name in available or (":" not in name and f"{name}:latest" in available)
+
     async def preload_models(self, models: list[str] | None = None) -> list[str]:
         """Verify and warm locally installed models without network pulls."""
         healthy, _ = await self.is_healthy()
@@ -37,7 +41,7 @@ class OllamaManager:
 
         loaded: list[str] = []
         for model_name in models or list(settings.models):
-            if model_name not in available:
+            if not self._has_model(model_name, available):
                 logger.error(f"Required local model is missing: {model_name}")
                 continue
             try:
@@ -55,7 +59,7 @@ class OllamaManager:
             except Exception as exc:
                 logger.error(f"Failed to preload model {model_name}: {exc}")
 
-        if settings.embed_model not in available:
+        if not self._has_model(settings.embed_model, available):
             logger.error(f"Required local embedding model is missing: {settings.embed_model}")
         else:
             try:
@@ -115,15 +119,59 @@ class OllamaManager:
             return [
                 {
                     "name": model.model,
-                    "size_vram": model.size,
+                    "size_vram": getattr(model, "size_vram", 0) or 0,
                     "expires_at": str(model.expires_at) if model.expires_at else None,
-                    "processor": "gpu",
+                    "processor": self._processor(
+                        getattr(model, "size", 0) or 0,
+                        getattr(model, "size_vram", 0) or 0,
+                    ),
                 }
                 for model in (ps.models or [])
             ]
         except Exception as exc:
             logger.error(f"Failed to get running models: {exc}")
             return []
+
+    @staticmethod
+    def _processor(size: int, size_vram: int) -> str:
+        if size_vram <= 0:
+            return "cpu"
+        if size and size_vram < size:
+            return "mixed"
+        return "gpu"
+
+    async def model_inventory(self, connected: bool = True) -> list[dict]:
+        required = [*settings.models, settings.embed_model]
+        if not connected:
+            return [
+                {
+                    "name": name,
+                    "kind": "embedding" if name == settings.embed_model else "chat",
+                    "installed": None,
+                    "loaded": None,
+                    "ready": False,
+                }
+                for name in required
+            ]
+        try:
+            listing = await asyncio.wait_for(self.client.list(), timeout=5)
+            installed = {
+                getattr(item, "model", None) or getattr(item, "name", None)
+                for item in getattr(listing, "models", [])
+            }
+        except Exception:
+            installed = set()
+        loaded = {model["name"] for model in await self.running_models()}
+        return [
+            {
+                "name": name,
+                "kind": "embedding" if name == settings.embed_model else "chat",
+                "installed": self._has_model(name, installed),
+                "loaded": self._has_model(name, loaded),
+                "ready": self._has_model(name, installed) and self._has_model(name, loaded),
+            }
+            for name in required
+        ]
 
     async def is_healthy(self) -> tuple[bool, int]:
         start = time.monotonic()

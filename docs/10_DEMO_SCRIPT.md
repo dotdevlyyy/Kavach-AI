@@ -91,7 +91,7 @@ Before the demo starts:
 - No external network calls made during execution
 
 **Talking point:**
-> *"The code runs in a sandboxed environment — isolated subprocess with timeout and memory limits. This is critical for a secure environment where arbitrary code execution needs to be contained."*
+> *"When the optional trusted-host runner is enabled, code runs in a locked-down disposable Docker container with no network, strict resource limits, and no host fallback."*
 
 ---
 

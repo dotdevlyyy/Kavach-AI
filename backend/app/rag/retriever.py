@@ -25,7 +25,7 @@ async def _hydrate_batch(chunk_ids: list[str]) -> dict[str, dict]:
     }
 
 
-async def search_fts(query: str, limit: int = 5) -> List[Dict]:
+async def search_fts(query: str, limit: int = 5, hydrate: bool = True) -> List[Dict]:
     """Search knowledge chunks using SQLite FTS5 (BM25 ranking)."""
     conn = Tortoise.get_connection("default")
 
@@ -43,7 +43,7 @@ async def search_fts(query: str, limit: int = 5) -> List[Dict]:
         """,
         [fts_query_str, limit],
     )
-    return [
+    results = [
         {
             "id": row["chunk_id"],
             "content": row["content"],
@@ -53,9 +53,16 @@ async def search_fts(query: str, limit: int = 5) -> List[Dict]:
         }
         for row in rows
     ]
+    if hydrate:
+        metadata = await _hydrate_batch([result["id"] for result in results])
+        for result in results:
+            result.update(metadata.get(result["id"], {}))
+    return results
 
 
-async def search_vector(query_embedding: list[float], limit: int = 5) -> List[Dict]:
+async def search_vector(
+    query_embedding: list[float], limit: int = 5, hydrate: bool = True
+) -> List[Dict]:
     """Search knowledge chunks using cosine similarity on stored embeddings.
 
     ponytail: brute-force scan over chunks with embeddings. Fine up to a few thousand
@@ -65,8 +72,7 @@ async def search_vector(query_embedding: list[float], limit: int = 5) -> List[Di
     if not query_embedding:
         return []
 
-    # ponytail: hard cap at 200 chunks per scan — see ceiling note above
-    chunks = await KnowledgeChunk.filter(embedding__not_isnull=True).limit(200)
+    chunks = await KnowledgeChunk.filter(embedding__not_isnull=True)
     scored = []
     for chunk in chunks:
         if not chunk.embedding:
@@ -90,7 +96,12 @@ async def search_vector(query_embedding: list[float], limit: int = 5) -> List[Di
         )
 
     scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:limit]
+    results = scored[:limit]
+    if hydrate:
+        metadata = await _hydrate_batch([result["id"] for result in results])
+        for result in results:
+            result.update(metadata.get(result["id"], {}))
+    return results
 
 
 async def hybrid_search(query: str, limit: int = 5) -> List[Dict]:
@@ -100,9 +111,11 @@ async def hybrid_search(query: str, limit: int = 5) -> List[Dict]:
     """
     from app.rag.embedder import generate_embedding
 
-    fts_results = await search_fts(query, limit=limit * 2)
+    fts_results = await search_fts(query, limit=limit * 2, hydrate=False)
     query_emb = await generate_embedding(query)
-    vec_results = await search_vector(query_emb, limit=limit * 2) if query_emb else []
+    vec_results = (
+        await search_vector(query_emb, limit=limit * 2, hydrate=False) if query_emb else []
+    )
 
     k = 60
     rrf_scores: Dict[str, float] = {}

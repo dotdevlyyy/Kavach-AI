@@ -11,21 +11,25 @@ from loguru import logger
 
 from app.core.ollama_client import ollama_client
 
+MAX_PLAN_CHARS = 100_000
+
 SYSTEM_PLANNER_PROMPT = """You are Kavach AI's Strategic ReAct Agent Planner for MRPL Refinery
 and Critical Infrastructure operations. Given a user's task request and optional file context,
 create a concise execution plan with clear steps.
 
 Available Capabilities & Tools (use exact names for `suggested_tool`):
-1. `code_execute`: Run Python code safely for data processing or math calculations.
-2. `search_knowledge_base`: Query on-premise Knowledge Base for refinery SOPs,
+1. `search_knowledge_base`: Query on-premise Knowledge Base for refinery SOPs,
    inspection standards, or P&ID data.
-3. `generate_word_document`: Generate an official Word approval note (.docx).
-4. `generate_excel_sheet`: Generate an Excel procurement or data spreadsheet (.xlsx).
-5. `generate_presentation`: Generate a PowerPoint summary (.pptx).
-6. `generate_pdf_document`: Generate a PDF document (.pdf).
-7. `extract_text_from_image`: Perform OCR on scanned PDFs or images.
-8. `analyze_engineering_diagram`: Analyze P&ID diagrams or engineering drawings.
-9. `file_read` / `file_write`: Inspect or persist local refinery workspace files.
+2. `generate_word_document`: Generate an official Word approval note (.docx).
+3. `generate_excel_sheet`: Generate an Excel procurement or data spreadsheet (.xlsx).
+4. `generate_presentation`: Generate a PowerPoint summary (.pptx).
+5. `generate_pdf_document`: Generate a PDF document (.pdf).
+6. `extract_text_from_image`: Perform OCR on scanned PDFs or images.
+7. `analyze_engineering_diagram`: Analyze P&ID diagrams or engineering drawings.
+8. `file_read` / `file_write`: Inspect or persist local refinery workspace files.
+
+For OCR or diagram steps, set `tool_input.file_id` to one exact ID from Attached Files.
+Use separate steps when multiple attachments must be inspected.
 
 Respond strictly in valid JSON format:
 {
@@ -43,7 +47,9 @@ Respond strictly in valid JSON format:
 """
 
 
-def get_fallback_plan(task_description: str) -> Dict[str, Any]:
+def get_fallback_plan(
+    task_description: str, file_ids: Optional[List[str]] = None
+) -> Dict[str, Any]:
     task_lower = task_description.lower()
     if "pdf" in task_lower:
         doc_tool = "generate_pdf_document"
@@ -54,24 +60,39 @@ def get_fallback_plan(task_description: str) -> Dict[str, Any]:
     else:
         doc_tool = "generate_word_document"
 
-    return {
-        "goal": task_description,
-        "steps": [
+    attachment_steps = (
+        [
             {
                 "step_number": 1,
-                "title": "Analyze Task & Context",
-                "description": "Gather context and execute primary logic.",
-                "suggested_tool": "search_knowledge_base",
-                "tool_input": {"query": task_description},
-            },
-            {
-                "step_number": 2,
-                "title": "Execute & Formulate Response",
-                "description": task_description,
-                "suggested_tool": doc_tool,
-                "tool_input": {"title": "Generated Document"},
-            },
-        ],
+                "title": "Extract attached evidence",
+                "description": "Extract evidence from all attached images or scanned PDFs.",
+                "suggested_tool": "extract_text_from_image",
+                "tool_input": {"file_ids": file_ids},
+            }
+        ]
+        if file_ids
+        else []
+    )
+    steps = [
+        *attachment_steps,
+        {
+            "step_number": len(attachment_steps) + 1,
+            "title": "Analyze Task & Context",
+            "description": "Gather context and execute primary logic.",
+            "suggested_tool": "search_knowledge_base",
+            "tool_input": {"query": task_description},
+        },
+        {
+            "step_number": len(attachment_steps) + 2,
+            "title": "Execute & Formulate Response",
+            "description": task_description,
+            "suggested_tool": doc_tool,
+            "tool_input": {"title": "Generated Document"},
+        },
+    ]
+    return {
+        "goal": task_description,
+        "steps": steps,
     }
 
 
@@ -164,7 +185,7 @@ class AgentPlanner:
         task_lower = task_description.lower()
 
         # Heuristic: If it's a simple document generation request, bypass the erratic LLM planner
-        if any(
+        if not file_ids and any(
             verb in task_lower for verb in ["generate", "create", "make", "write", "build", "draft"]
         ) and any(
             x in task_lower
@@ -192,7 +213,12 @@ class AgentPlanner:
                     if hasattr(chunk, "message")
                     else chunk.get("message", {}).get("content", "")
                 )
-                response_text += token
+                remaining = MAX_PLAN_CHARS - len(response_text)
+                if remaining <= 0:
+                    break
+                response_text += token[:remaining]
+                if len(token) > remaining:
+                    break
 
             parsed = _extract_json(response_text)
             if parsed is None:
@@ -202,7 +228,7 @@ class AgentPlanner:
 
         except Exception as e:
             logger.warning(f"Fallback to default plan generation due to parsing error: {e}")
-            return get_fallback_plan(task_description)
+            return get_fallback_plan(task_description, file_ids)
 
 
 planner = AgentPlanner()

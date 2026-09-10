@@ -6,7 +6,7 @@ Request models use Pydantic for FastAPI compatibility; event payloads use plain 
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ChatRequest(BaseModel):
@@ -26,3 +26,9 @@ class ChatRequest(BaseModel):
         if not value.strip():
             raise ValueError("Message cannot be empty")
         return value
+
+    @model_validator(mode="after")
+    def attachment_count_is_bounded(self):
+        if len(self.file_ids) + len(self.files) > 10:
+            raise ValueError("Maximum 10 attachments")
+        return self

@@ -75,7 +75,7 @@ PS 26117 | MRPL | SIH 2026
 **Action:** Ask for a Python script → Code generated → Click "Run in Sandbox" → Output displayed
 
 **Voiceover:**
-> *"For internal tool development, Kavach generates code and executes it in a sandboxed environment — isolated subprocess with timeout and memory limits. The developer can iterate on the code without ever exposing internal system details to the cloud."*
+> *"For trusted-host development, Kavach can execute generated code in a locked-down disposable Docker container with no network and strict resource limits. The shipped backend container leaves this optional capability disabled."*
 
 ---
 

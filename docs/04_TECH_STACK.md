@@ -147,7 +147,7 @@ class AgentExecuteRequest(BaseModel):
   - `chat()` — conversational generation
   - `generate()` — single-prompt generation
   - `embed()` — embedding generation for RAG
-  - `pull()` — model downloading (at startup)
+  - `list()` — verify models provisioned before offline deployment
   - `ps()` — check which models are loaded in memory
   - `AsyncClient` — full async support for FastAPI
   - `stream=True` — token-by-token streaming
@@ -160,8 +160,12 @@ class AgentExecuteRequest(BaseModel):
 | `llama3.2:1b` | General chat, summarization, document drafting | 1B params | ~0.8 GB | Llama 3.2 Community License |
 | `qwen2.5-coder:1.5b` | Code generation, code review, debugging | 1.5B params | ~1.1 GB | Apache 2.0 |
 | `qwen2.5vl:3b` | Vision, OCR, image analysis, scanned document understanding | 3B params | ~2.2 GB | Apache 2.0 |
+| `nomic-embed-text` | Local knowledge-base embeddings | 137M params | runtime-dependent | Apache 2.0 |
 
 **Total VRAM for all 3 models simultaneously: ~4.1 GB**
+
+Models must be pulled during provisioning. Startup performs local verification and warm-up only;
+it never accesses a registry or retries downloads.
 
 ### Additional Python Libraries
 

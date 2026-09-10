@@ -1,5 +1,6 @@
 import re
 import uuid
+from pathlib import Path
 
 from docx import Document
 from openpyxl import Workbook
@@ -15,6 +16,37 @@ def _save(suffix: str, title: str) -> dict:
     safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title).strip("._-")[:100] or "untitled"
     filename = f"{file_id}_{safe_title}.{suffix}"
     return {"file_id": file_id, "filename": filename, "path": OUTPUT_DIR / filename}
+
+
+def _safe_excel_cell(value):
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+def _unicode_font() -> Path:
+    candidates = (
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("C:/Windows/Fonts/arial.ttf"),
+        Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+    )
+    if font := next((path for path in candidates if path.is_file()), None):
+        return font
+    raise RuntimeError("Unicode PDF font unavailable")
+
+
+def _validate_pdf_text(font: Path, text: str) -> None:
+    from fontTools.ttLib import TTFont
+
+    shaping_ranges = ((0x0600, 0x06FF), (0x0900, 0x097F), (0x0C80, 0x0CFF))
+    if any(start <= ord(char) <= end for char in text for start, end in shaping_ranges):
+        raise ValueError("PDF script shaping is unavailable for Arabic, Devanagari, and Kannada")
+    with TTFont(font, lazy=True) as loaded_font:
+        supported = loaded_font.getBestCmap() or {}
+    missing = sorted({ord(char) for char in text if ord(char) >= 32 and ord(char) not in supported})
+    if missing:
+        sample = ", ".join(f"U+{codepoint:04X}" for codepoint in missing[:5])
+        raise ValueError(f"PDF font does not support requested characters: {sample}")
 
 
 @register_tool("generate_word_document")
@@ -53,9 +85,9 @@ def generate_excel_sheet(title: str, headers: list, rows: list) -> dict:
         wb = Workbook()
         ws = wb.active
         ws.title = re.sub(r"[\\/*?:\[\]]", "_", title)[:31] or "Sheet1"
-        ws.append(headers)
+        ws.append([_safe_excel_cell(value) for value in headers])
         for row in rows:
-            ws.append(row)
+            ws.append([_safe_excel_cell(value) for value in row])
         wb.save(meta["path"])
         meta["status"] = "ok"
         return meta
@@ -109,19 +141,19 @@ def generate_pdf_document(title: str, content: str, author: str = "Kavach AI") -
 
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
+        font = _unicode_font()
+        _validate_pdf_text(font, f"{title}\nAuthor: {author}\n{content}")
+        pdf.add_font("KavachUnicode", fname=str(font))
+        pdf.set_font("KavachUnicode", size=16)
         pdf.cell(0, 10, title, ln=True, align="C")
         pdf.ln(10)
 
-        pdf.set_font("Arial", "I", 12)
+        pdf.set_font("KavachUnicode", size=12)
         pdf.cell(0, 10, f"Author: {author}", ln=True)
         pdf.ln(5)
 
-        pdf.set_font("Arial", "", 11)
-        # Clean unicode characters for FPDF's default Arial
-        clean_content = content.encode("latin-1", "replace").decode("latin-1")
-        # multi_cell automatically wraps text
-        pdf.multi_cell(0, 6, clean_content)
+        pdf.set_font("KavachUnicode", size=11)
+        pdf.multi_cell(0, 6, content)
 
         pdf.output(str(meta["path"]))
         meta["status"] = "ok"

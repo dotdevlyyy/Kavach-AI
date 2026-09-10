@@ -153,7 +153,7 @@ The planner emits these canonical names; aliases were removed.
 
 - `file_read` — Read files from workspace
 - `file_write` — Write files to workspace
-- `code_execute` — Sandboxed Python execution (subprocess + tempdir)
+- `code_execute` — Optional locked-down Docker execution for trusted host deployments; disabled from the default planner
 - `generate_word_document` — DOCX via `python-docx`
 - `generate_excel_sheet` — XLSX via `openpyxl`
 - `generate_presentation` — PPTX via `python-pptx`
@@ -182,30 +182,19 @@ The planner emits these canonical names; aliases were removed.
 
 ### 4. AI Layer (Ollama)
 
-**Model Preloading Strategy:**
+**Offline Model Provisioning and Readiness:**
 
 ```python
-# At backend startup (lifespan event)
-async def preload_models():
-    client = AsyncClient(host="http://localhost:11434")
-    
-    models = ["llama3.2:1b", "qwen2.5-coder:1.5b", "qwen2.5vl:3b"]
-    
-    for model in models:
-        # Pull if not already downloaded
-        await client.pull(model)
-        
-        # Warm up: send a dummy request with keep_alive=-1 (never unload)
-        await client.chat(
-            model=model,
-            messages=[{"role": "user", "content": "hello"}],
-            keep_alive=-1  # Keep in VRAM forever
-        )
-    
-    # Verify all models are loaded
-    ps_result = await client.ps()
-    # Should show all 3 models in memory
+# Run during provisioning, before entering the air-gapped environment.
+ollama pull llama3.2:1b
+ollama pull qwen2.5-coder:1.5b
+ollama pull qwen2.5vl:3b
+ollama pull nomic-embed-text
 ```
+
+Backend startup never downloads models. It verifies local installation, warms the three chat
+models and `nomic-embed-text`, and reports explicit `installed`, `loaded`, and `ready` states.
+`/api/health` is healthy only when DB, Ollama, and every required model are ready.
 
 **Memory Requirements (estimated):**
 | Model | Parameters | Quantization | VRAM Required |
@@ -290,7 +279,7 @@ async def preload_models():
 
 ### Air-Gap Proof
 1. **Firewall rules** — iptables/Windows Firewall blocking all outbound on the demo machine
-2. **Network monitor endpoint** — `/api/network/connections` returns live `netstat` output
+2. **Network monitor endpoint** — `/api/network/connections` returns live `psutil` socket data
 3. **Frontend dashboard** — Real-time display of all active network connections
 4. **Ollama configured for local only** — `OLLAMA_HOST=127.0.0.1:11434`
 5. **No external dependencies at runtime** — All models pre-downloaded, all packages vendored
@@ -299,5 +288,5 @@ async def preload_models():
 - All data stored locally in SQLite database
 - File uploads stored in local `./data/uploads/` directory
 - Generated documents in `./data/outputs/`
-- Knowledge base in `./data/knowledge/`
+- Indexed source files remain in `./data/uploads/`; chunks, embeddings, and FTS rows live in SQLite
 - No telemetry, no analytics, no external logging

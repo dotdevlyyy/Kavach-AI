@@ -190,10 +190,10 @@ netsh advfirewall firewall add rule name="Allow Localhost" dir=out action=allow 
 | User uploads 100 MB PDF | Reject with error: "Max file size: 20 MB" |
 | User uploads non-supported format (.exe, .zip) | Reject with error: "Unsupported file type" |
 | User types in Hindi/regional language | Llama 3.2 has basic Hindi support. Response may be mixed Hindi-English. Known limitation. |
-| Empty message sent | Return 400: "Message cannot be empty" |
+| Empty message sent | Pydantic rejects it with HTTP 422 and a validation-error body. |
 | Agent tool throws exception | Catch, log, return tool error to agent. Agent can retry or skip. |
-| Code sandbox runs dangerous code (rm -rf) | Sandbox runs in `TemporaryDirectory` with empty `env`, no access to main filesystem. 512 MB address-space cap via POSIX `RLIMIT_AS`. Per-call timeout: 30s. |
-| SQLite database gets corrupted | WAL mode + 6-hour backups. Startup runs `PRAGMA journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON` (`app/core/database.py:38-47`). No `PRAGMA integrity_check` — restart from backup if corruption detected. |
-| Ollama model download interrupted | Retry logic in preloading. Ollama supports resumable downloads. |
+| Code sandbox runs dangerous code (rm -rf) | Execution fails closed unless a Docker CLI, daemon, and pre-provisioned `python:3.13-slim` image are available. Container uses no network, read-only root, non-root user, dropped capabilities, `no-new-privileges`, 512 MB memory, 1 CPU, 64 PIDs, 30s timeout, and 1 MB live output caps. Never mount an unrestricted host Docker socket into the public API container. |
+| SQLite database gets corrupted | Startup enables WAL, `synchronous=NORMAL`, and foreign keys. Backups and restore verification are operator-managed; the backend does not schedule backups. |
+| Required Ollama model missing | Startup never downloads. Provision all four models offline; health reports `installed`, `loaded`, and `ready` per model and becomes unhealthy when a required model is absent. |
 | Browser refresh during streaming | Frontend re-fetches conversation from DB. Stream is lost but history preserved. |
 | Two browser tabs sending messages simultaneously | SQLite WAL mode handles concurrent reads. Writes are serialized but fast. |

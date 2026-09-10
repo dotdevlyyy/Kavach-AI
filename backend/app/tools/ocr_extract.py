@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from pathlib import Path
 
@@ -6,6 +7,9 @@ import fitz
 from app.core.ollama_client import ollama_client
 from app.core.paths import UPLOAD_DIR, resolve_data_path, resolve_within
 from app.tools.registry import register_tool
+
+MAX_OCR_PAGES = 20
+OCR_DEADLINE_SECONDS = 120
 
 
 async def _resolve_path(file_id: str | None, filepath: str | None) -> Path | None:
@@ -34,6 +38,8 @@ def _image_payloads(target: Path) -> list[str]:
 
     payloads = []
     with fitz.open(target) as document:
+        if document.page_count > MAX_OCR_PAGES:
+            raise ValueError(f"PDF exceeds {MAX_OCR_PAGES}-page OCR limit")
         for page in document:
             png = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).tobytes("png")
             payloads.append(base64.b64encode(png).decode("utf-8"))
@@ -54,22 +60,24 @@ async def extract_text_from_image(filepath: str = "", file_id: str = "") -> str:
 
     try:
         pages = []
-        for page_number, image in enumerate(_image_payloads(target), start=1):
-            response = await ollama_client.chat(
-                model="qwen2.5vl:3b",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "Extract all text from this image exactly as written. "
-                            "Do not add commentary."
-                        ),
-                        "images": [image],
-                    }
-                ],
-                keep_alive=-1,
-            )
-            pages.append(f"[Page {page_number}]\n{response.message.content}")
+        async with asyncio.timeout(OCR_DEADLINE_SECONDS):
+            payloads = await asyncio.to_thread(_image_payloads, target)
+            for page_number, image in enumerate(payloads, start=1):
+                response = await ollama_client.chat(
+                    model="qwen2.5vl:3b",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": (
+                                "Extract all text from this image exactly as written. "
+                                "Do not add commentary."
+                            ),
+                            "images": [image],
+                        }
+                    ],
+                    keep_alive=-1,
+                )
+                pages.append(f"[Page {page_number}]\n{response.message.content[:100_000]}")
         return "\n\n".join(pages)
     except Exception:
         return "Error extracting text from image."

@@ -188,7 +188,9 @@ The Agent Engine implements a **ReAct (Reasoning + Acting)** loop that enables m
 
 ### Agent Loop Implementation
 
-The loop lives in `app/agent/loop.py` as the module-level function `run_agent_stream` (not a class). Each step emits SSE events; the planner returns JSON, the executor dispatches via the tool registry, the observer generates a reflection, and a final token stream summarises the result.
+The loop lives on the module-level `AgentLoop` instance in `app/agent/loop.py`. Each step emits SSE
+events; the planner returns JSON, the executor dispatches via the tool registry, the observer
+generates a reflection, and a final token stream summarises the result.
 
 ```python
 # app/agent/loop.py (canonical shape)
@@ -204,17 +206,24 @@ async def run_agent_stream(
     # 1. Routing
     selected_model, route_metadata = await route_request(...)
 
-    # 2. ReAct loop: for each step
-    for step_idx in range(1, max_steps + 1):
+    # 2. ReAct loop: execute the bounded plan
+    successful_results = []
+    for step_idx, plan in enumerate(plan_steps, start=1):
         if cancelled():
             break
-        plan_steps = await planner.create_plan(messages)
+        plan.tool_input["context"] = bounded(successful_results)
         act = await executor.execute_step(step_idx, plan.tool, plan.tool_input)
+        if act.success:
+            successful_results.append(act.output)
         obs = await observer.observe(act)
         yield sse("step", {"type": "act"|"observe"|"reflect", "step": step_idx, ...})
 
     # 3. Final synthesis + done event
 ```
+
+Each successful result contributes at most 4,000 characters to a 16,000-character rolling
+context. Document generation uses that evidence, not only the original request. Planner-selected
+attachment IDs must belong to the request. A fallback OCR step processes every attached ID.
 
 Timeouts (intentionally hardcoded as constants in the loop; no config knob — edit `app/agent/loop.py` and redeploy if a value needs to change):
 - `PER_TASK_SECONDS = 300` (5 min total)
@@ -246,121 +255,56 @@ Usage in a tool module:
 ```python
 # app/tools/file_read.py
 @register_tool("file_read")
-async def file_read(file_path: str) -> str:
+def file_read(file_path: str) -> str:
     """Read sandboxed file. Returns content or error string."""
     ...
 ```
 
 Tools register themselves at import time; `app/agent/executor.py` imports each tool module so the decorators fire at startup. The planner prompt's tool list is hard-coded in `app/agent/planner.py:13-38` (no dynamic `get_descriptions()`).
 
+`code_execute` is not advertised to the default planner because the shipped backend container has
+no secure runner connection. The implementation remains available for explicit operator testing
+when the backend runs directly on a trusted host with Docker.
+
 ### Available Tools
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `file_read` | `file_path: str` | Read contents of a file from workspace |
-| `file_write` | `file_path: str, content: str` | Write content to a file |
-| `code_execute` | `code: str, language: str` | Execute code in sandboxed subprocess |
-| `doc_generate` | `type: str, content: dict` | Generate DOCX/XLSX/PPTX document |
-| `knowledge_search` | `query: str, top_k: int` | Search local knowledge base |
-| `ocr_extract` | `file_id: str` | Extract text from scanned image/PDF via Qwen2.5-VL |
-| `image_analyze` | `file_id: str, question: str` | Analyze image and answer question via Qwen2.5-VL |
+| `file_read` | `file_path: str` | Read at most 1 MB from `data/workspace` |
+| `file_write` | `file_path: str, content: str` | Create a file up to 1 MB in `data/workspace`; never overwrite |
+| `code_execute` | `code: str` | Optional Docker sandbox for trusted operator deployments |
+| `generate_word_document` | `title, content, author?` | Generate DOCX |
+| `generate_excel_sheet` | `title, headers, rows` | Generate XLSX with formula-safe text cells |
+| `generate_presentation` | `title, slides_content` | Generate PPTX |
+| `generate_pdf_document` | `title, content, author?` | Generate PDF; unsupported font glyphs return an error |
+| `search_knowledge_base` | `query: str` | Search local knowledge base |
+| `extract_text_from_image` | `file_id: str` | Extract text from image/PDF via Qwen2.5-VL |
+| `analyze_engineering_diagram` | `file_id: str, query: str` | Analyze engineering image |
 
 ### Code Sandbox (Tool Detail)
 
-```python
-# app/tools/code_execute.py
-import subprocess
-import tempfile
-import os
+`code_execute` never runs generated code in the backend host process. It requires a reachable
+Docker daemon, Docker CLI, and a pre-provisioned local `python:3.13-slim` image. If any prerequisite
+is missing, it returns `Secure code sandbox unavailable` and does not fall back.
 
-async def execute_code(code: str, language: str = "python") -> str:
-    """Execute code in a sandboxed subprocess."""
-    
-    if language != "python":
-        return f"Error: Only Python execution is supported"
-    
-    # Create temp directory for isolation
-    with tempfile.TemporaryDirectory() as tmpdir:
-        script_path = os.path.join(tmpdir, "script.py")
-        
-        with open(script_path, "w") as f:
-            f.write(code)
-        
-        try:
-            result = subprocess.run(
-                ["python", script_path],
-                capture_output=True,
-                text=True,
-                timeout=30,          # 30 second timeout
-                cwd=tmpdir,          # Isolated working directory
-                env={                # Minimal environment
-                    "PATH": os.environ.get("PATH", ""),
-                    "PYTHONPATH": "",
-                },
-            )
-            
-            output = ""
-            if result.stdout:
-                output += f"STDOUT:\n{result.stdout}\n"
-            if result.stderr:
-                output += f"STDERR:\n{result.stderr}\n"
-            if result.returncode != 0:
-                output += f"Exit code: {result.returncode}\n"
-            
-            return output or "Code executed successfully (no output)"
-            
-        except subprocess.TimeoutExpired:
-            return "Error: Code execution timed out (30s limit)"
-```
+Each run uses a named, disposable container with `--network none`, a read-only root filesystem,
+non-root UID/GID, all capabilities dropped, `no-new-privileges`, 512 MB memory, 1 CPU, 64 PIDs,
+a 16 MB `noexec` tmpfs, and only a read-only script mount. Runtime is capped at 30 seconds.
+stdout and stderr are each capped at 1 MB while streaming. Cleanup runs in `finally`, including
+timeout and caller cancellation.
+
+The default backend image does not expose a Docker daemon, so this capability is unavailable there.
+Production deployments that enable it must use a separately secured runner boundary. Do not mount
+an unrestricted host Docker socket into an internet- or user-facing backend container.
 
 ### Document Generation (Tool Detail)
 
-```python
-# app/tools/doc_generate.py
-from docx import Document as DocxDocument
-from openpyxl import Workbook
-from pptx import Presentation
-import os
-
-async def generate_document(doc_type: str, content: dict) -> str:
-    """Generate a document (DOCX, XLSX, or PPTX)."""
-    
-    output_dir = "./data/outputs"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    if doc_type == "docx":
-        return _generate_docx(content, output_dir)
-    elif doc_type == "xlsx":
-        return _generate_xlsx(content, output_dir)
-    elif doc_type == "pptx":
-        return _generate_pptx(content, output_dir)
-    else:
-        return f"Error: Unsupported document type '{doc_type}'"
-
-def _generate_docx(content: dict, output_dir: str) -> str:
-    doc = DocxDocument()
-    
-    if "title" in content:
-        doc.add_heading(content["title"], 0)
-    
-    if "sections" in content:
-        for section in content["sections"]:
-            if "heading" in section:
-                doc.add_heading(section["heading"], level=1)
-            if "body" in section:
-                doc.add_paragraph(section["body"])
-            if "table" in section:
-                table_data = section["table"]
-                table = doc.add_table(rows=len(table_data), cols=len(table_data[0]))
-                for i, row in enumerate(table_data):
-                    for j, cell in enumerate(row):
-                        table.cell(i, j).text = str(cell)
-    
-    filename = f"{content.get('filename', 'document')}.docx"
-    filepath = os.path.join(output_dir, filename)
-    doc.save(filepath)
-    return f"Generated: {filepath}"
-```
+Four registered tools own generation: `generate_word_document(title, content, author?)`,
+`generate_excel_sheet(title, headers, rows)`, `generate_presentation(title, slides_content)`, and
+`generate_pdf_document(title, content, author?)`. Each returns `status`, a UUID `file_id`,
+`filename`, and output `path` on success. XLSX formula-like text is escaped. PDF accepts characters
+present in the bundled font, excluding scripts that require shaping, including Arabic, Devanagari,
+and Kannada. Unsupported text returns an error instead of silently dropping glyphs.
 
 ## Part 3: Model Preloading at Startup
 

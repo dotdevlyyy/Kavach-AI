@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query
 from loguru import logger
 
 from app.models.network_log import NetworkLog
+from app.schemas.responses import NetworkLogsResponse, NetworkResponse
 
 router = APIRouter(prefix="/api/network", tags=["network"])
 
@@ -138,15 +139,15 @@ async def _snapshot_to_db(connection_list: list[dict]) -> int:
         )
         for c in connection_list
     ]
+    await NetworkLog.filter(timestamp__lt=datetime.now(timezone.utc) - timedelta(hours=24)).delete()
     if not rows:
         return 0
     await NetworkLog.bulk_create(rows)
-    await NetworkLog.filter(timestamp__lt=datetime.now(timezone.utc) - timedelta(hours=24)).delete()
     return len(rows)
 
 
-@router.get("")
-@router.get("/connections")
+@router.get("", response_model=NetworkResponse)
+@router.get("/connections", response_model=NetworkResponse)
 async def get_network_audit(persist: bool = Query(default=False)):
     """
     Inspect active system sockets via psutil to verify air-gap sovereignty.
@@ -178,7 +179,7 @@ async def get_network_audit(persist: bool = Query(default=False)):
     }
 
 
-@router.get("/logs")
+@router.get("/logs", response_model=NetworkLogsResponse)
 async def list_network_logs(limit: int = Query(default=50, ge=1, le=500)):
     """GET /api/network/logs — Historical NetworkLog rows from psutil snapshots."""
     rows = await NetworkLog.all().order_by("-timestamp").limit(limit)

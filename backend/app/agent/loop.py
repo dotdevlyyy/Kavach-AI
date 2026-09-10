@@ -12,7 +12,7 @@ from app.agent.executor import executor
 from app.agent.observer import observer
 from app.agent.planner import get_fallback_plan, planner
 from app.core.ollama_client import ollama_client
-from app.core.sse import sse
+from app.core.sse import AgentDoneEvent, sse
 from app.models.agent_step import AgentStep
 from app.models.agent_task import AgentTask
 from app.models.conversation import Conversation
@@ -23,6 +23,9 @@ from app.schemas.common import AgentTaskStatus, StepType
 PER_STEP_SECONDS = 60
 PER_TASK_SECONDS = 300
 VISION_TOOLS = {"extract_text_from_image", "analyze_engineering_diagram"}
+MAX_STEP_CONTEXT_CHARS = 4_000
+MAX_TOTAL_CONTEXT_CHARS = 16_000
+MAX_FINAL_RESPONSE_CHARS = 200_000
 
 
 class AgentLoop:
@@ -91,7 +94,15 @@ class AgentLoop:
                 db_task.completed_at = datetime.now(timezone.utc)
                 await db_task.save()
             yield sse("error", {"error": "Agent routing failed"})
-            yield sse("done", {"task_id": task_id, "status": "failed", "total_steps": 0})
+            done: AgentDoneEvent = {
+                "task_id": task_id,
+                "status": "failed",
+                "total_steps": 0,
+                "output_files": [],
+                "truncated": False,
+                "error": "Agent routing failed",
+            }
+            yield sse("done", done)
             return
 
         yield sse(
@@ -103,6 +114,7 @@ class AgentLoop:
                 "task_type": route_metadata.task_type,
                 "confidence": route_metadata.confidence,
                 "reasoning": route_metadata.reasoning,
+                "accepted_file_ids": file_ids,
             },
         )
 
@@ -116,7 +128,7 @@ class AgentLoop:
                 timeout=min(PER_STEP_SECONDS, remaining()),
             )
         except (TimeoutError, asyncio.TimeoutError):
-            plan_data = get_fallback_plan(task_description)
+            plan_data = get_fallback_plan(task_description, file_ids)
             logger.warning("Agent planner timed out; using fallback plan")
 
         steps = plan_data.get("steps", [])[:max_steps]
@@ -142,6 +154,8 @@ class AgentLoop:
         output_files: list[str] = []
         any_failed = False
         timed_out = False
+        successful_results: list[str] = []
+        next_attachment = 0
 
         for step_number, step in enumerate(steps, start=1):
             if cancelled():
@@ -155,9 +169,28 @@ class AgentLoop:
             tool_name = str(step.get("suggested_tool") or "none")
             title = str(step.get("title") or f"Step {step_number}")
             tool_input = dict(step.get("tool_input") or {})
-            tool_input.update({"task": task_description, "step_title": title})
+            tool_input.update(
+                {
+                    "task": task_description,
+                    "step_title": title,
+                    "context": "\n\n".join(successful_results)[-MAX_TOTAL_CONTEXT_CHARS:],
+                }
+            )
+            input_error = None
             if tool_name in VISION_TOOLS and file_ids:
-                tool_input.setdefault("file_id", file_ids[0])
+                requested_files = [str(value) for value in tool_input.get("file_ids", [])]
+                invalid_files = [value for value in requested_files if value not in file_ids]
+                if invalid_files:
+                    input_error = f"Attachment was not supplied with request: {invalid_files[0]}"
+                tool_input["file_ids"] = [value for value in requested_files if value in file_ids]
+                requested_file = str(tool_input.get("file_id") or "")
+                if requested_file and requested_file not in file_ids:
+                    input_error = f"Attachment was not supplied with request: {requested_file}"
+                if not tool_input.get("file_id") and not tool_input["file_ids"]:
+                    tool_input["file_id"] = file_ids[next_attachment % len(file_ids)]
+                    next_attachment += 1
+                if not tool_input["file_ids"]:
+                    tool_input.pop("file_ids")
 
             yield sse(
                 "step",
@@ -171,10 +204,13 @@ class AgentLoop:
             )
             started = time.monotonic()
             try:
-                result = await asyncio.wait_for(
-                    executor.execute_step(step_number, tool_name, tool_input, selected_model),
-                    timeout=min(PER_STEP_SECONDS, remaining()),
-                )
+                if input_error:
+                    result = {"success": False, "output": input_error, "tool": tool_name}
+                else:
+                    result = await asyncio.wait_for(
+                        executor.execute_step(step_number, tool_name, tool_input, selected_model),
+                        timeout=min(PER_STEP_SECONDS, remaining()),
+                    )
             except (TimeoutError, asyncio.TimeoutError):
                 result = {
                     "success": False,
@@ -185,6 +221,13 @@ class AgentLoop:
             duration_ms = int((time.monotonic() - started) * 1000)
             observation = observer.observe(step_number, result)
             any_failed = any_failed or not result.get("success", False)
+            if result.get("success"):
+                output = str(result.get("output", "")).strip()
+                if output:
+                    successful_results.append(
+                        f"Step {step_number} ({title}, {tool_name}): "
+                        f"{output[:MAX_STEP_CONTEXT_CHARS]}"
+                    )
             yield sse(
                 "step",
                 {
@@ -250,8 +293,16 @@ class AgentLoop:
                     logger.exception(f"Could not save agent step: {exc}")
 
             total_steps += 1
-            final_context += f"\n- Step {step_number} ({title}): {observation['observation']}"
+            context_output = (
+                str(result.get("output", ""))[:MAX_STEP_CONTEXT_CHARS]
+                if result.get("success")
+                else observation["observation"]
+            )
+            final_context = (
+                final_context + f"\n- Step {step_number} ({title}): {context_output}"
+            )[-MAX_TOTAL_CONTEXT_CHARS:]
 
+        synthesis_truncated = False
         if cancelled():
             final_text = "Task cancelled by user."
             status = AgentTaskStatus.CANCELLED
@@ -271,6 +322,7 @@ class AgentLoop:
                 {"role": "user", "content": task_description},
             ]
             chunks = []
+            total_final_chars = 0
             try:
                 async with asyncio.timeout(remaining()):
                     async for chunk in ollama_client.chat_stream(
@@ -287,8 +339,18 @@ class AgentLoop:
                             else chunk.get("message", {}).get("content", "")
                         )
                         if token:
-                            chunks.append(token)
-                            yield sse("token", {"content": token, "token": token})
+                            remaining_chars = MAX_FINAL_RESPONSE_CHARS - total_final_chars
+                            emitted = token[:remaining_chars]
+                            chunks.append(emitted)
+                            total_final_chars += len(emitted)
+                            if emitted:
+                                yield sse("token", {"content": emitted, "token": emitted})
+                            if (
+                                len(token) > remaining_chars
+                                or total_final_chars >= MAX_FINAL_RESPONSE_CHARS
+                            ):
+                                synthesis_truncated = True
+                                break
                 final_text = "".join(chunks)
             except (TimeoutError, asyncio.TimeoutError):
                 timed_out = True
@@ -321,15 +383,15 @@ class AgentLoop:
             except Exception as exc:
                 logger.exception(f"Could not finalize agent task: {exc}")
 
-        yield sse(
-            "done",
-            {
+        done: AgentDoneEvent = {
                 "task_id": task_id,
                 "status": status.value,
                 "total_steps": total_steps,
                 "output_files": output_files,
-            },
-        )
+                "truncated": synthesis_truncated,
+                "error": "One or more steps failed" if status == AgentTaskStatus.FAILED else None,
+            }
+        yield sse("done", done)
 
 
 agent_loop = AgentLoop()

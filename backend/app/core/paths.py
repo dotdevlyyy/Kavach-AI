@@ -11,8 +11,9 @@ DATA_ROOT = Path(settings.db_path).resolve().parent
 UPLOAD_DIR = Path(settings.upload_dir).resolve()
 OUTPUT_DIR = Path(settings.output_dir).resolve()
 KNOWLEDGE_DIR = Path(settings.knowledge_dir).resolve()
+AGENT_WORKSPACE_DIR = DATA_ROOT / "workspace"
 
-for _d in (DATA_ROOT, UPLOAD_DIR, OUTPUT_DIR, KNOWLEDGE_DIR):
+for _d in (DATA_ROOT, UPLOAD_DIR, OUTPUT_DIR, KNOWLEDGE_DIR, AGENT_WORKSPACE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 
@@ -26,3 +27,12 @@ def resolve_within(root: Path, path: str | Path) -> Path:
 
 def resolve_data_path(path: str | Path) -> Path:
     return resolve_within(DATA_ROOT, path)
+
+
+def resolve_upload_path(path: str | Path) -> Path:
+    """Resolve a persisted upload path under the configured upload directory."""
+    return resolve_within(UPLOAD_DIR, path)
+
+
+def resolve_agent_workspace_path(path: str | Path) -> Path:
+    return resolve_within(AGENT_WORKSPACE_DIR, path)

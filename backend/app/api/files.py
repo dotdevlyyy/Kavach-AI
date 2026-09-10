@@ -6,6 +6,7 @@ Endpoints for uploading files, retrieving metadata, and downloading.
 import mimetypes
 import os
 import uuid
+import zipfile
 from pathlib import Path
 from typing import List
 from uuid import UUID
@@ -15,15 +16,18 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from loguru import logger
 
-from app.core.paths import OUTPUT_DIR, UPLOAD_DIR
+from app.core.paths import OUTPUT_DIR, UPLOAD_DIR, resolve_upload_path
 from app.models.file_upload import FileUpload
 from app.schemas.files import FileUploadResponse, UploadedFile
+from app.schemas.responses import FileListResponse, FileMetadataResponse, PreviewResponse
 
 router = APIRouter(prefix="/api/files", tags=["Files"])
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_UPLOAD_FILES = 10
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 10_000
+MAX_ARCHIVE_EXPANDED_BYTES = 100 * 1024 * 1024
 DOCUMENT_TYPES = {"pdf", "docx", "xlsx", "csv", "txt", "md", "json"}
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff"}
 CODE_EXTENSIONS = {"py", "js", "ts", "tsx", "jsx", "html", "css", "cpp", "go", "rs", "java", "sh"}
@@ -85,6 +89,8 @@ def _validate_upload_header(extension: str, header: bytes) -> None:
     expected = signatures.get(extension)
     if expected and not any(header.startswith(prefix) for prefix in expected):
         raise HTTPException(status_code=400, detail="File content does not match extension")
+    if extension == "webp" and header[8:12] != b"WEBP":
+        raise HTTPException(status_code=400, detail="File content does not match extension")
     if extension in ({"txt", "md", "csv", "json"} | CODE_EXTENSIONS) and b"\x00" in header:
         raise HTTPException(status_code=400, detail="Text file contains binary content")
 
@@ -101,6 +107,8 @@ def _validate_mime_type(extension: str, mime_type: str) -> None:
         "docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
         "xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
         "json": {"application/json", "text/json"},
+        "csv": {"application/vnd.ms-excel"},
+        "js": {"application/javascript", "application/x-javascript"},
     }
     if extension in ({"txt", "md", "csv"} | CODE_EXTENSIONS) and mime_type.startswith("text/"):
         return
@@ -108,11 +116,39 @@ def _validate_mime_type(extension: str, mime_type: str) -> None:
         raise HTTPException(status_code=400, detail="File content type does not match extension")
 
 
+def _validate_office_archive(extension: str, path: Path) -> None:
+    if extension not in {"docx", "xlsx"}:
+        return
+    required = "word/document.xml" if extension == "docx" else "xl/workbook.xml"
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_ARCHIVE_MEMBERS:
+                raise HTTPException(status_code=400, detail="Office archive has too many members")
+            if sum(member.file_size for member in members) > MAX_ARCHIVE_EXPANDED_BYTES:
+                raise HTTPException(status_code=413, detail="Office archive expands beyond 100 MB")
+            if required not in {member.filename for member in members}:
+                raise HTTPException(status_code=400, detail="File content does not match extension")
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="File content does not match extension")
+
+
+def _media_type(path: Path) -> str:
+    fallbacks = {
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }
+    return mimetypes.guess_type(path.name)[0] or fallbacks.get(
+        path.suffix.lower(), "application/octet-stream"
+    )
+
+
 TEXT_PREVIEW_TYPES = {"txt", "csv", "md", "json"}
 TEXT_PREVIEW_BYTES = 4096
 
 
-@router.post("/upload")
+@router.post("/upload", response_model=FileListResponse)
 async def upload_files(
     files: List[UploadFile] = File(...),
     conversation_id: UUID | None = Form(default=None),
@@ -160,6 +196,7 @@ async def upload_files(
                             header = chunk[:32]
                         staged.write(chunk)
                 _validate_upload_header(extension, header)
+                _validate_office_archive(extension, staged_path)
                 os.replace(staged_path, file_path)
 
                 db_file = await FileUpload.create(
@@ -203,9 +240,13 @@ async def upload_files(
 async def download_file(file_id: UUID):
     """GET /api/files/download/{id} — Download a file (user upload OR agent-generated doc)."""
     db_file = await FileUpload.get_or_none(id=str(file_id))
-    if db_file and os.path.exists(db_file.stored_path):
+    try:
+        upload_path = resolve_upload_path(db_file.stored_path) if db_file else None
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File not found")
+    if upload_path and upload_path.is_file():
         return FileResponse(
-            path=db_file.stored_path,
+            path=upload_path,
             filename=db_file.original_name,
             media_type=db_file.mime_type,
         )
@@ -213,11 +254,7 @@ async def download_file(file_id: UUID):
     # Agent-generated docs: no FileUpload row, scan OUTPUT_DIR.
     output_path = _resolve_output_path(file_id)
     if output_path:
-        mime_type = (
-            "application/pdf"
-            if output_path.suffix.lower() == ".pdf"
-            else "application/octet-stream"
-        )
+        mime_type = _media_type(output_path)
         return FileResponse(
             path=str(output_path),
             filename=output_path.name,
@@ -228,7 +265,7 @@ async def download_file(file_id: UUID):
     raise HTTPException(status_code=404, detail="File not found")
 
 
-@router.get("/{file_id}")
+@router.get("/{file_id}", response_model=FileMetadataResponse)
 async def get_file_metadata(file_id: UUID):
     """GET /api/files/{id} — Retrieve file metadata."""
     db_file = await FileUpload.get_or_none(id=str(file_id))
@@ -256,14 +293,14 @@ async def get_file_metadata(file_id: UUID):
                 original_name=output_path.name,
                 file_type=output_path.suffix.lstrip(".").lower(),
                 file_size=size,
-                mime_type="application/octet-stream",
+                mime_type=_media_type(output_path),
             )
         )
 
     raise HTTPException(status_code=404, detail="File not found")
 
 
-@router.get("/{file_id}/preview")
+@router.get("/{file_id}/preview", response_model=PreviewResponse)
 async def preview_file(file_id: UUID):
     """
     GET /api/files/{id}/preview
@@ -283,12 +320,16 @@ async def preview_file(file_id: UUID):
             "download_url": f"/api/files/download/{file_id}",
         }
 
-    if not os.path.exists(stored_path):
+    try:
+        stored_path = resolve_upload_path(stored_path)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not stored_path.is_file():
         raise HTTPException(status_code=404, detail="File content not found on disk")
 
     if db_file.file_type in TEXT_PREVIEW_TYPES:
         try:
-            with open(stored_path, "rb") as f:
+            with stored_path.open("rb") as f:
                 raw = f.read(TEXT_PREVIEW_BYTES)
             try:
                 text = raw.decode("utf-8")

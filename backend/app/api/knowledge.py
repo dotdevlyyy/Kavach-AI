@@ -1,12 +1,15 @@
 """Knowledge base ingestion, search, listing, and deletion."""
 
+import asyncio
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
+from tortoise.exceptions import IntegrityError
 
+from app.core.paths import resolve_upload_path
 from app.models.document import Document
 from app.models.file_upload import FileUpload
 from app.models.knowledge_chunk import KnowledgeChunk
@@ -15,6 +18,12 @@ from app.rag.embedder import generate_embedding
 from app.rag.parser import parse_document
 from app.rag.pipeline import ingest_document
 from app.rag.retriever import hybrid_search, search_fts, search_vector
+from app.schemas.responses import (
+    ActionResponse,
+    KnowledgeDocumentsResponse,
+    KnowledgeIndexResponse,
+    KnowledgeSearchResponse,
+)
 
 router = APIRouter(prefix="/api/knowledge", tags=["Knowledge"])
 
@@ -50,7 +59,10 @@ async def _extract_upload_text(upload: FileUpload) -> str:
 
         return await extract_text_from_image(file_id=str(upload.id))
 
-    text = parse_document(upload.stored_path)
+    path = resolve_upload_path(upload.stored_path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    text = await asyncio.wait_for(asyncio.to_thread(parse_document, str(path)), timeout=60)
     if upload.file_type == "pdf" and len(text.strip()) < 10:
         from app.tools.ocr_extract import extract_text_from_image
 
@@ -58,7 +70,7 @@ async def _extract_upload_text(upload: FileUpload) -> str:
     return text
 
 
-@router.post("/index")
+@router.post("/index", response_model=KnowledgeIndexResponse)
 async def index_document(request: IndexRequest):
     upload = await FileUpload.get_or_none(id=request.file_id)
     if not upload:
@@ -68,10 +80,13 @@ async def index_document(request: IndexRequest):
             status_code=400,
             detail=f"Unsupported file type for indexing: {upload.file_type}",
         )
-    duplicate = await Document.get_or_none(
-        file_path=upload.stored_path,
-        is_knowledge_base=True,
-    )
+    try:
+        path = resolve_upload_path(upload.stored_path)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File content not found")
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File content not found")
+    duplicate = await Document.get_or_none(source_upload_id=upload.id)
     if duplicate:
         raise HTTPException(status_code=409, detail="File is already indexed")
 
@@ -91,14 +106,17 @@ async def index_document(request: IndexRequest):
     document = Document(
         filename=upload.original_name,
         original_name=upload.original_name,
-        file_path=upload.stored_path,
+        file_path=str(path),
         file_type=upload.file_type,
         file_size=upload.file_size,
         mime_type=upload.mime_type,
+        source_upload_id=upload.id,
         is_knowledge_base=False,
     )
     try:
         ingested = await ingest_document(document, chunks)
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="File is already indexed")
     except Exception as exc:
         logger.exception(f"Document indexing failed for {upload.id}: {exc}")
         raise HTTPException(status_code=500, detail="Document indexing failed")
@@ -111,7 +129,7 @@ async def index_document(request: IndexRequest):
     }
 
 
-@router.post("/search")
+@router.post("/search", response_model=KnowledgeSearchResponse)
 async def search(request: SearchRequest):
     if request.search_type == "fts":
         results = await search_fts(request.query, limit=request.top_k)
@@ -142,7 +160,7 @@ async def search(request: SearchRequest):
     }
 
 
-@router.get("/documents")
+@router.get("/documents", response_model=KnowledgeDocumentsResponse)
 async def list_documents(limit: int = Query(50, ge=1, le=200)):
     documents = await Document.all().order_by("-created_at").limit(limit)
     return {
@@ -163,7 +181,7 @@ async def list_documents(limit: int = Query(50, ge=1, le=200)):
     }
 
 
-@router.delete("/documents/{document_id}")
+@router.delete("/documents/{document_id}", response_model=ActionResponse)
 async def delete_document(document_id: UUID):
     from tortoise.transactions import in_transaction
 

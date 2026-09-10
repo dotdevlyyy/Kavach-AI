@@ -1,7 +1,6 @@
 """Run generated Python only inside a locked-down, pre-provisioned container."""
 
 import asyncio
-import os
 import shutil
 import tempfile
 import uuid
@@ -13,6 +12,7 @@ from loguru import logger
 MEMORY_LIMIT_BYTES = 512 * 1024 * 1024
 MAX_OUTPUT_BYTES = 1024 * 1024
 SANDBOX_IMAGE = "python:3.13-slim"
+DOCKER_CONTROL_TIMEOUT_SECONDS = 5
 
 
 def _result(success: bool, exit_code: int, stdout: str = "", stderr: str = "") -> dict[str, Any]:
@@ -34,7 +34,14 @@ async def _image_is_local(docker: str) -> bool:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    return await process.wait() == 0
+    try:
+        return (
+            await asyncio.wait_for(process.wait(), timeout=DOCKER_CONTROL_TIMEOUT_SECONDS) == 0
+        )
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        return False
 
 
 async def _remove_container(docker: str, name: str) -> None:
@@ -46,7 +53,27 @@ async def _remove_container(docker: str, name: str) -> None:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    await process.wait()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=DOCKER_CONTROL_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        logger.warning(f"Timed out removing sandbox container {name}")
+
+
+class _OutputLimitExceeded(Exception):
+    pass
+
+
+async def _read_limited(stream: asyncio.StreamReader | None) -> bytes:
+    output = bytearray()
+    if stream is None:
+        return bytes(output)
+    while chunk := await stream.read(64 * 1024):
+        output.extend(chunk)
+        if len(output) > MAX_OUTPUT_BYTES:
+            raise _OutputLimitExceeded
+    return bytes(output)
 
 
 async def execute_python_code(code: str, timeout: int = 30) -> dict[str, Any]:
@@ -67,8 +94,6 @@ async def execute_python_code(code: str, timeout: int = 30) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = Path(temporary_directory)
         script = root / "script.py"
-        stdout_path = root / "stdout.txt"
-        stderr_path = root / "stderr.txt"
         script.write_text(code, encoding="utf-8")
 
         mount = f"type=bind,source={root},target=/workspace,readonly"
@@ -104,35 +129,40 @@ async def execute_python_code(code: str, timeout: int = 30) -> dict[str, Any]:
             "/workspace/script.py",
         ]
 
+        process = None
         try:
-            with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
-                process = await asyncio.create_subprocess_exec(
-                    *command,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    env=os.environ.copy(),
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_task = asyncio.create_task(_read_limited(process.stdout))
+            stderr_task = asyncio.create_task(_read_limited(process.stderr))
+            try:
+                stdout_bytes, stderr_bytes, exit_code = await asyncio.wait_for(
+                    asyncio.gather(stdout_task, stderr_task, process.wait()), timeout=timeout
                 )
-                try:
-                    exit_code = await asyncio.wait_for(process.wait(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
-                    await _remove_container(docker, container_name)
-                    return _result(
-                        False,
-                        -1,
-                        stderr=f"Execution timed out after {timeout} seconds.",
-                    )
+            except _OutputLimitExceeded:
+                process.kill()
+                await process.wait()
+                return _result(False, -1, stderr="Execution output exceeded 1 MB.")
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                return _result(
+                    False,
+                    -1,
+                    stderr=f"Execution timed out after {timeout} seconds.",
+                )
 
-            if (
-                stdout_path.stat().st_size > MAX_OUTPUT_BYTES
-                or stderr_path.stat().st_size > MAX_OUTPUT_BYTES
-            ):
-                return _result(False, exit_code, stderr="Execution output exceeded 1 MB.")
-
-            stdout = stdout_path.read_text(encoding="utf-8", errors="replace")
-            stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
             return _result(exit_code == 0, exit_code, stdout, stderr)
         except Exception as exc:
             logger.exception(f"Secure code sandbox failed: {exc}")
             return _result(False, 1, stderr="Secure code sandbox failed.")
+        finally:
+            if process and process.returncode is None:
+                process.kill()
+                await process.wait()
+            await asyncio.shield(_remove_container(docker, container_name))

@@ -21,40 +21,52 @@ DOC_TOOLS = {
     "generate_presentation",
     "generate_pdf_document",
 }
-META_KEYS = {"task", "step_title"}
+META_KEYS = {"task", "step_title", "context"}
+VISION_TOOLS = {"extract_text_from_image", "analyze_engineering_diagram"}
+MAX_GENERATED_TEXT_CHARS = 200_000
 
 
 async def _generate_text(task: str, model: str, instruction: str) -> str:
     from app.core.ollama_client import ollama_client
 
     chunks = []
+    total_chars = 0
     async for chunk in ollama_client.chat_stream(
         model=model,
         messages=[{"role": "user", "content": f"{instruction}\n\nRequest: {task}"}],
         keep_alive=-1,
         options={"temperature": 0.2},
     ):
-        chunks.append(
+        token = (
             chunk.message.content
             if hasattr(chunk, "message")
             else chunk.get("message", {}).get("content", "")
         )
+        remaining = MAX_GENERATED_TEXT_CHARS - total_chars
+        if remaining <= 0:
+            break
+        chunks.append(token[:remaining])
+        total_chars += min(len(token), remaining)
+        if len(token) > remaining:
+            break
     return "".join(chunks).strip()
 
 
-async def _document_content(task: str, model: str) -> str:
+async def _document_content(task: str, context: str, model: str) -> str:
+    request = task
+    if context:
+        request += f"\n\nVerified results from prior steps:\n{context}"
     try:
-        return (
-            await _generate_text(
-                task,
+        generated = await _generate_text(
+                request,
                 model,
                 "Write complete formatted content. Output only document content.",
             )
-            or task
-        )
+        generated = generated or task
+        return f"{generated}\n\nSource Evidence\n{context}" if context else generated
     except Exception as exc:
         logger.warning(f"Document content generation failed: {exc}")
-        return task or "No content provided."
+        return request or "No content provided."
 
 
 async def _resolve_kwargs(func, tool_input: dict, model: str = "llama3.2:1b") -> dict:
@@ -75,6 +87,7 @@ async def _resolve_kwargs(func, tool_input: dict, model: str = "llama3.2:1b") ->
         )
 
     task = str(tool_input.get("task", ""))
+    context = str(tool_input.get("context", ""))
     title = str(tool_input.get("step_title", "Generated Document"))
     generated_content: str | None = None
 
@@ -84,15 +97,15 @@ async def _resolve_kwargs(func, tool_input: dict, model: str = "llama3.2:1b") ->
         if parameter.name == "title":
             values[parameter.name] = title
         elif parameter.name == "content":
-            generated_content = generated_content or await _document_content(task, model)
+            generated_content = generated_content or await _document_content(task, context, model)
             values[parameter.name] = generated_content
         elif parameter.name == "headers":
             values[parameter.name] = ["Content"]
         elif parameter.name == "rows":
-            generated_content = generated_content or await _document_content(task, model)
+            generated_content = generated_content or await _document_content(task, context, model)
             values[parameter.name] = [[generated_content]]
         elif parameter.name == "slides_content":
-            generated_content = generated_content or await _document_content(task, model)
+            generated_content = generated_content or await _document_content(task, context, model)
             values[parameter.name] = [{"title": title, "content": generated_content}]
         elif parameter.annotation in (str, inspect.Parameter.empty):
             values[parameter.name] = task or title
@@ -141,8 +154,20 @@ class AgentExecutor:
 
             if tool_name in _TOOL_REGISTRY:
                 func = _TOOL_REGISTRY[tool_name]
-                kwargs = await _resolve_kwargs(func, tool_input, model=model)
-                result = await execute_tool(tool_name, kwargs)
+                batch_failed = False
+                if tool_name in VISION_TOOLS and tool_input.get("file_ids"):
+                    outputs = []
+                    for file_id in tool_input["file_ids"]:
+                        item_input = {**tool_input, "file_id": file_id}
+                        item_input.pop("file_ids", None)
+                        kwargs = await _resolve_kwargs(func, item_input, model=model)
+                        item_output = str(await execute_tool(tool_name, kwargs))
+                        batch_failed = batch_failed or item_output.startswith("Error")
+                        outputs.append(f"[{file_id}]\n{item_output}")
+                    result = "\n\n".join(outputs)
+                else:
+                    kwargs = await _resolve_kwargs(func, tool_input, model=model)
+                    result = await execute_tool(tool_name, kwargs)
                 if tool_name in DOC_TOOLS and isinstance(result, dict):
                     if result.get("status") == "ok":
                         return {
@@ -162,7 +187,7 @@ class AgentExecutor:
                 output = str(result)
                 return {
                     "tool": tool_name,
-                    "success": not output.startswith("Error"),
+                    "success": not batch_failed and not output.startswith("Error"),
                     "output": output,
                     "raw": result,
                 }
