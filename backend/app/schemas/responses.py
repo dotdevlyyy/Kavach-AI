@@ -63,8 +63,8 @@ class ModelResponse(BaseModel):
     task_types: list[str]
     size_gb: float
     is_loaded: bool
-    installed: bool | None
-    loaded: bool | None
+    installed: bool
+    loaded: bool
     ready: bool
     parameters: str
     quantization: str
@@ -90,8 +90,8 @@ class RunningModelsResponse(BaseModel):
 class HealthModelResponse(BaseModel):
     name: str
     kind: str
-    installed: bool
-    loaded: bool
+    installed: bool | None
+    loaded: bool | None
     ready: bool
 
 

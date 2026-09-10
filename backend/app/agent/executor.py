@@ -24,6 +24,7 @@ DOC_TOOLS = {
 META_KEYS = {"task", "step_title", "context", "file_id", "file_ids"}
 VISION_TOOLS = {"extract_text_from_image", "analyze_engineering_diagram"}
 MAX_GENERATED_TEXT_CHARS = 200_000
+DOCUMENT_MODEL = "llama3.2:1b"
 
 
 async def _generate_text(task: str, model: str, instruction: str) -> str:
@@ -53,6 +54,10 @@ async def _generate_text(task: str, model: str, instruction: str) -> str:
 
 
 async def _document_content(task: str, context: str, model: str) -> str:
+    if context and any(
+        keyword in task.lower() for keyword in ("convert", "docx", "word document")
+    ):
+        return f"Source Evidence\n{context}"
     request = task
     if context:
         request += f"\n\nVerified results from prior steps:\n{context}"
@@ -166,7 +171,8 @@ class AgentExecutor:
                         outputs.append(f"[{file_id}]\n{item_output}")
                     result = "\n\n".join(outputs)
                 else:
-                    kwargs = await _resolve_kwargs(func, tool_input, model=model)
+                    generation_model = DOCUMENT_MODEL if tool_name in DOC_TOOLS else model
+                    kwargs = await _resolve_kwargs(func, tool_input, model=generation_model)
                     result = await execute_tool(tool_name, kwargs)
                 if tool_name in DOC_TOOLS and isinstance(result, dict):
                     if result.get("status") == "ok":

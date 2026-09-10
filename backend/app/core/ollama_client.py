@@ -11,6 +11,8 @@ from ollama import AsyncClient
 
 from app.core.config import settings
 
+DEFAULT_CONTEXT_SIZE = 8192
+
 
 class OllamaManager:
     def __init__(self, host: str | None = None):
@@ -79,10 +81,13 @@ class OllamaManager:
         keep_alive: int = -1,
         **kwargs,
     ) -> dict:
+        options = dict(kwargs.pop("options", {}) or {})
+        options.setdefault("num_ctx", DEFAULT_CONTEXT_SIZE)
         return await self.client.chat(
             model=model,
             messages=messages,
             keep_alive=keep_alive,
+            options=options,
             **kwargs,
         )
 
@@ -93,11 +98,14 @@ class OllamaManager:
         keep_alive: int = -1,
         **kwargs,
     ) -> AsyncIterator[dict]:
+        options = dict(kwargs.pop("options", {}) or {})
+        options.setdefault("num_ctx", DEFAULT_CONTEXT_SIZE)
         stream = await self.client.chat(
             model=model,
             messages=messages,
             stream=True,
             keep_alive=keep_alive,
+            options=options,
             **kwargs,
         )
         async for chunk in stream:

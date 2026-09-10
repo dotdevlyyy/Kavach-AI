@@ -754,6 +754,69 @@ def test_code_request_fallback_uses_execution_tool():
     assert plan["steps"][0]["suggested_tool"] == "code_execute"
 
 
+def test_planner_normalizes_prefixed_tool_input_keys():
+    from app.agent.planner import _normalize_plan
+
+    plan = _normalize_plan(
+        {
+            "goal": "extract PDF",
+            "steps": [
+                {
+                    "title": "OCR",
+                    "suggested_tool": "extract_text_from_image",
+                    "tool_input": {"tool_input.file_id": "upload-1"},
+                }
+            ],
+        },
+        "extract PDF",
+    )
+    assert plan["steps"][0]["tool_input"] == {"file_id": "upload-1"}
+
+
+def test_docx_request_overrides_pdf_input_format():
+    from app.agent.planner import _normalize_plan, get_fallback_plan
+
+    task = "Extract the PDF and make a DOCX file"
+    fallback = get_fallback_plan(task, ["upload-1"])
+    assert fallback["steps"][-1]["suggested_tool"] == "generate_word_document"
+    normalized = _normalize_plan(
+        {"steps": [{"suggested_tool": "generate_pdf_document", "tool_input": {}}]}, task
+    )
+    assert normalized["steps"][0]["suggested_tool"] == "generate_word_document"
+
+
+def test_pdf_to_docx_conversion_uses_extracted_evidence(monkeypatch):
+    from app.agent.executor import _document_content
+
+    async def unexpected_generation(*args, **kwargs):
+        raise AssertionError("direct conversion should not call the model")
+
+    monkeypatch.setattr("app.agent.executor._generate_text", unexpected_generation)
+    result = asyncio.run(
+        _document_content(
+            "Convert the PDF to a DOCX file",
+            "[Page 1]\nExtracted report text",
+            "qwen2.5vl:3b",
+        )
+    )
+    assert "Extracted report text" in result
+
+
+def test_ollama_chat_defaults_to_larger_context(monkeypatch):
+    from app.core.ollama_client import OllamaManager
+
+    calls = {}
+
+    async def fake_chat(**kwargs):
+        calls.update(kwargs)
+        return {"message": {"content": "ok"}}
+
+    manager = OllamaManager(host="http://localhost:11434")
+    monkeypatch.setattr(manager.client, "chat", fake_chat)
+    asyncio.run(manager.chat("llama3.2:1b", [{"role": "user", "content": "hi"}]))
+    assert calls["options"]["num_ctx"] == 8192
+
+
 def test_agent_document_receives_prior_evidence(monkeypatch, tmp_path):
     from docx import Document
 

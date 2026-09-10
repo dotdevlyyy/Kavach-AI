@@ -68,7 +68,9 @@ def get_fallback_plan(
                 }
             ],
         }
-    if "pdf" in task_lower:
+    if "docx" in task_lower or "word document" in task_lower or "word file" in task_lower:
+        doc_tool = "generate_word_document"
+    elif "pdf" in task_lower:
         doc_tool = "generate_pdf_document"
     elif "excel" in task_lower or "spreadsheet" in task_lower or "csv" in task_lower:
         doc_tool = "generate_excel_sheet"
@@ -156,6 +158,8 @@ def _normalize_plan(parsed: Dict[str, Any], task_description: str) -> Dict[str, 
     override_tool = None
     if any(keyword in task_lower for keyword in ("python", "execute code", "run code")):
         override_tool = "code_execute"
+    elif "docx" in task_lower or "word document" in task_lower or "word file" in task_lower:
+        override_tool = "generate_word_document"
     elif "pdf" in task_lower:
         override_tool = "generate_pdf_document"
     elif "excel" in task_lower or "spreadsheet" in task_lower or "csv" in task_lower:
@@ -176,15 +180,18 @@ def _normalize_plan(parsed: Dict[str, Any], task_description: str) -> Dict[str, 
         }:
             tool = override_tool
 
+        raw_tool_input = step.get("tool_input") if isinstance(step.get("tool_input"), dict) else {}
+        tool_input = {
+            key.removeprefix("tool_input."): value
+            for key, value in raw_tool_input.items()
+        }
         normalized.append(
             {
                 "step_number": i,
                 "title": step.get("title") or f"Step {i}",
                 "description": step.get("description") or "",
                 "suggested_tool": tool,
-                "tool_input": step.get("tool_input")
-                if isinstance(step.get("tool_input"), dict)
-                else {},
+                "tool_input": tool_input,
             }
         )
     if not normalized:

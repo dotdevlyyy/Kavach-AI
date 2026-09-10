@@ -6,6 +6,7 @@ import fitz
 
 from app.core.ollama_client import ollama_client
 from app.core.paths import UPLOAD_DIR, resolve_data_path, resolve_within
+from app.rag.parser import parse_pdf
 from app.tools.registry import register_tool
 
 MAX_OCR_PAGES = 20
@@ -61,6 +62,10 @@ async def extract_text_from_image(filepath: str = "", file_id: str = "") -> str:
     try:
         pages = []
         async with asyncio.timeout(OCR_DEADLINE_SECONDS):
+            if target.suffix.lower() == ".pdf":
+                text = await asyncio.to_thread(parse_pdf, str(target))
+                if len(text.strip()) >= 10:
+                    return text[:100_000]
             payloads = await asyncio.to_thread(_image_payloads, target)
             for page_number, image in enumerate(payloads, start=1):
                 response = await ollama_client.chat(
