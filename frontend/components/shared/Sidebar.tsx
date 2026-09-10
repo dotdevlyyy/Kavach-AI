@@ -53,11 +53,20 @@ export function Sidebar() {
   const isSidebarCollapsed = useChatStore((state) => state.isSidebarCollapsed);
 
   return (
-    <div 
-      className={`bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
-        isSidebarCollapsed ? "w-0 md:w-16" : "w-64"
-      }`}
-    >
+    <>
+      {/* Mobile Backdrop */}
+      {!isSidebarCollapsed && (
+        <div 
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => useChatStore.getState().toggleSidebar()}
+        />
+      )}
+      
+      <div 
+        className={`bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col shrink-0 transition-all duration-300 ease-in-out overflow-hidden z-50 absolute md:relative ${
+          isSidebarCollapsed ? "-translate-x-full w-64 md:w-16 md:translate-x-0" : "translate-x-0 w-64"
+        }`}
+      >
       {/* Brand Header */}
       <div className="h-16 flex items-center justify-center px-4 border-b border-sidebar-border shrink-0 whitespace-nowrap">
         <ShieldAlert className={`text-primary shrink-0 transition-all duration-300 ${isSidebarCollapsed ? "w-6 h-6" : "w-6 h-6 mr-3"}`} />
@@ -149,5 +158,6 @@ export function Sidebar() {
         </div>
       </div>
     </div>
+    </>
   );
 }
