@@ -16,6 +16,7 @@ from app.agent.observer import observer
 from app.agent.planner import _extract_json, _normalize_plan
 from app.api.network import is_local_address
 from app.core.cancellation import CancellationRegistry
+from app.core.uploads import AGENT_ATTACHMENT_TYPES
 from app.rag.chunker import chunk_text, split_into_sentences
 from app.rag.embedder import deserialize_embedding, serialize_embedding
 from app.rag.parser import parse_csv, parse_document, parse_txt
@@ -59,6 +60,21 @@ def test_t1_parse_document_routes_extensions(tmp_path):
     assert parse_document(str(tmp_path / "a.md")) == "md"
     assert parse_document(str(tmp_path / "b.txt")) == "txt"
     assert "1, 2" in parse_document(str(tmp_path / "c.csv"))
+
+
+def test_t1_parse_xlsx_and_agent_attachment_types(tmp_path):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.active.title = "Readings"
+    workbook.active.append(["Equipment", "Thickness"])
+    workbook.active.append(["T-101", 12.5])
+    path = tmp_path / "readings.xlsx"
+    workbook.save(path)
+
+    text = parse_document(str(path))
+    assert "[Readings]" in text and "T-101\t12.5" in text
+    assert {"pdf", "docx", "xlsx", "txt", "code", "image"} <= AGENT_ATTACHMENT_TYPES
 
 
 def test_t1_parse_document_unsupported(tmp_path):
@@ -800,6 +816,27 @@ def test_pdf_to_docx_conversion_uses_extracted_evidence(monkeypatch):
         )
     )
     assert "Extracted report text" in result
+
+
+def test_document_content_corrects_inverted_measurement_claim(monkeypatch):
+    from app.agent.executor import _document_content
+
+    async def wrong_measurement(*args, **kwargs):
+        return (
+            "Shell thickness measured 12.5 mm is below "
+            "the minimum allowable thickness of 10.0 mm."
+        )
+
+    monkeypatch.setattr("app.agent.executor._generate_text", wrong_measurement)
+    result = asyncio.run(
+        _document_content(
+            "Draft an approval note",
+            "Shell thickness measured 12.5 mm; minimum allowable thickness is 10.0 mm.",
+            "llama3.2:1b",
+        )
+    )
+    assert "12.5 mm is above the minimum allowable thickness of 10.0 mm" in result
+    assert "Source Evidence" not in result
 
 
 def test_ollama_chat_defaults_to_larger_context(monkeypatch):

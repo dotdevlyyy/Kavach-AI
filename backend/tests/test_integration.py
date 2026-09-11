@@ -61,6 +61,7 @@ def test_file_upload_metadata_download_preview(client):
     dl = client.get(f"/api/files/download/{file_id}")
     assert dl.status_code == 200
     assert b"MRPL refinery" in dl.content
+    assert dl.headers["content-disposition"].startswith("inline;")
 
     preview = client.get(f"/api/files/{file_id}/preview")
     assert preview.status_code == 200
@@ -91,6 +92,39 @@ def test_chat_rejects_uploaded_xlsx_before_streaming(client):
     response = client.post("/api/chat", json={"message": "Read it", "files": [file_id]})
     assert response.status_code == 422
     assert response.json()["detail"] == "Unsupported attachment type: xlsx"
+
+
+def test_agent_accepts_uploaded_docx(client, monkeypatch):
+    from docx import Document
+
+    async def fake_agent_stream(**kwargs):
+        yield "event: done\ndata: {\"status\": \"completed\"}\n\n"
+
+    monkeypatch.setattr("app.api.agent.agent_loop.run_agent_stream", fake_agent_stream)
+    document = Document()
+    document.add_paragraph("Synthetic inspection report")
+    payload = io.BytesIO()
+    document.save(payload)
+    payload.seek(0)
+    uploaded = client.post(
+        "/api/files/upload",
+        files={
+            "files": (
+                "inspection.docx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert uploaded.status_code == 200
+    file_id = uploaded.json()["files"][0]["id"]
+
+    response = client.post(
+        "/api/agent/execute",
+        json={"task_description": "Summarize this inspection report", "files": [file_id]},
+    )
+    assert response.status_code == 200
+    assert "event: done" in response.text
 
 
 def test_agent_execute_streams_full_lifecycle(client):

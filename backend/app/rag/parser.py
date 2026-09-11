@@ -2,7 +2,8 @@ import csv
 import os
 
 import docx
-import fitz  # PyMuPDF
+import pymupdf
+from openpyxl import load_workbook
 
 MAX_PDF_PAGES = 100
 MAX_EXTRACTED_TEXT_CHARS = 500_000
@@ -23,7 +24,7 @@ def parse_txt(file_path: str) -> str:
 def parse_pdf(file_path: str) -> str:
     """Extracts text from a PDF file using PyMuPDF."""
     text_content = []
-    with fitz.open(file_path) as doc:
+    with pymupdf.open(file_path) as doc:
         if doc.page_count > MAX_PDF_PAGES:
             raise ValueError(f"PDF exceeds {MAX_PDF_PAGES}-page text extraction limit")
         for page in doc:
@@ -48,17 +49,39 @@ def parse_csv(file_path: str) -> str:
     return _bounded_text("\n".join(rows))
 
 
+def parse_xlsx(file_path: str) -> str:
+    """Extract spreadsheet cells as tab-separated text."""
+    workbook = load_workbook(file_path, read_only=True, data_only=True)
+    try:
+        rows = []
+        for sheet in workbook.worksheets:
+            rows.append(f"[{sheet.title}]")
+            rows.extend(
+                "\t".join("" if cell is None else str(cell) for cell in row)
+                for row in sheet.iter_rows(values_only=True)
+            )
+            if sum(map(len, rows)) > MAX_EXTRACTED_TEXT_CHARS:
+                raise ValueError("Extracted text exceeds 500,000-character limit")
+        return _bounded_text("\n".join(rows))
+    finally:
+        workbook.close()
+
+
 def parse_document(file_path: str) -> str:
     """
     Master routing function to extract text from a file based on its extension.
-    Supported extensions: .txt, .md, .pdf, .docx, .csv
+    Supported extensions: text/code, .pdf, .docx, .csv, .xlsx
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
     _, ext = os.path.splitext(file_path.lower())
 
-    if ext in [".txt", ".md"]:
+    text_extensions = {
+        ".txt", ".md", ".json", ".py", ".js", ".ts", ".tsx", ".jsx",
+        ".html", ".css", ".cpp", ".go", ".rs", ".java", ".sh",
+    }
+    if ext in text_extensions:
         return parse_txt(file_path)
     elif ext == ".pdf":
         return parse_pdf(file_path)
@@ -66,5 +89,7 @@ def parse_document(file_path: str) -> str:
         return parse_docx(file_path)
     elif ext == ".csv":
         return parse_csv(file_path)
+    elif ext == ".xlsx":
+        return parse_xlsx(file_path)
     else:
         raise ValueError(f"Unsupported file type for parsing: {ext}")

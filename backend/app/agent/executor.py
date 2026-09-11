@@ -27,6 +27,27 @@ MAX_GENERATED_TEXT_CHARS = 200_000
 DOCUMENT_MODEL = "llama3.2:1b"
 
 
+def _correct_measurement_comparisons(content: str, context: str) -> str:
+    """Correct an inverted below/above claim when context states both measurements."""
+    measurements = re.finditer(
+        r"measured\s+(\d+(?:\.\d+)?)\s*(mm)\b[^.\n]{0,160}?"
+        r"minimum allowable(?:\s+thickness)?\s+(?:is|of)\s+(\d+(?:\.\d+)?)\s*\2\b",
+        context,
+        flags=re.IGNORECASE,
+    )
+    for match in measurements:
+        value, unit, minimum = match.groups()
+        if float(value) <= float(minimum):
+            continue
+        pattern = (
+            rf"({re.escape(value)}\s*{re.escape(unit)}\b[^.\n]{{0,120}}?)\bbelow\b"
+            rf"(?=[^.\n]{{0,80}}?minimum allowable(?:\s+thickness)?(?:\s+of|\s+is)?\s*"
+            rf"{re.escape(minimum)}\s*{re.escape(unit)}\b)"
+        )
+        content = re.sub(pattern, r"\1above", content, flags=re.IGNORECASE)
+    return content
+
+
 async def _generate_text(task: str, model: str, instruction: str) -> str:
     from app.core.ollama_client import ollama_client
 
@@ -62,13 +83,26 @@ async def _document_content(task: str, context: str, model: str) -> str:
     if context:
         request += f"\n\nVerified results from prior steps:\n{context}"
     try:
+        instruction = " ".join(
+            (
+                "Write complete plain-text document content.",
+                "Output only the document, not source evidence.",
+                "Use verified results only.",
+                "Preserve measurements, units, and comparisons exactly.",
+                "Do not infer a below/above relationship without calculating it.",
+                "For an approval note, use concise sections for decision requested,",
+                "verified findings, and required actions.",
+                "Do not use Markdown, HTML, code fences, headings marked with #,",
+                "or source-evidence sections.",
+            )
+        )
         generated = await _generate_text(
                 request,
                 model,
-                "Write complete plain-text document content. Output only content. Do not use Markdown, HTML, code fences, headings marked with #, or source-evidence sections.",
+                instruction,
             )
         generated = generated or task
-        return f"{generated}\n\nSource Evidence\n{context}" if context else generated
+        return _correct_measurement_comparisons(generated, context)
     except Exception as exc:
         logger.warning(f"Document content generation failed: {exc}")
         return request or "No content provided."

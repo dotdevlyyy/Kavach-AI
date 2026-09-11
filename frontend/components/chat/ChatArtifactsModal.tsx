@@ -39,7 +39,9 @@ export function ChatArtifactsModal({ open, onOpenChange, artifacts }: ChatArtifa
     return <File className="w-5 h-5 text-gray-500" />;
   };
 
-  const selectedArtifact = artifacts.find(a => a.id === selectedId) || artifacts[0];
+  const selectedArtifact = artifacts.find(a => a.id === selectedId)
+    || [...artifacts].reverse().find(a => a.origin === "agent")
+    || artifacts.at(-1);
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const downloadUrl = selectedArtifact ? `${apiBase}/api/files/download/${selectedArtifact.id}` : "";
 

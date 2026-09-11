@@ -55,6 +55,11 @@ async def init_sqlite_pragmas():
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_source_upload "
         "ON documents(source_upload_id) WHERE source_upload_id IS NOT NULL;"
     )
+    agent_step_columns = await conn.execute_query_dict("PRAGMA table_info(agent_steps);")
+    if not any(column["name"] == "tokens_used" for column in agent_step_columns):
+        await conn.execute_query(
+            "ALTER TABLE agent_steps ADD COLUMN tokens_used INT NOT NULL DEFAULT 0;"
+        )
     logger.info("✅ SQLite WAL mode and performance pragmas set")
 
 

@@ -250,6 +250,7 @@ async def download_file(file_id: UUID):
             path=upload_path,
             filename=db_file.original_name,
             media_type=db_file.mime_type,
+            content_disposition_type="inline",
         )
 
     # Agent-generated docs: no FileUpload row, scan OUTPUT_DIR.

@@ -2,15 +2,19 @@ import asyncio
 import base64
 from pathlib import Path
 
-import fitz
+import pymupdf
 
 from app.core.ollama_client import ollama_client
 from app.core.paths import UPLOAD_DIR, resolve_data_path, resolve_within
-from app.rag.parser import parse_pdf
+from app.rag.parser import parse_document, parse_pdf
 from app.tools.registry import register_tool
 
 MAX_OCR_PAGES = 20
 OCR_DEADLINE_SECONDS = 120
+NATIVE_DOCUMENT_EXTENSIONS = {
+    ".docx", ".xlsx", ".csv", ".txt", ".md", ".json", ".py", ".js", ".ts",
+    ".tsx", ".jsx", ".html", ".css", ".cpp", ".go", ".rs", ".java", ".sh",
+}
 
 
 async def _resolve_path(file_id: str | None, filepath: str | None) -> Path | None:
@@ -38,11 +42,11 @@ def _image_payloads(target: Path) -> list[str]:
         return [base64.b64encode(target.read_bytes()).decode("utf-8")]
 
     payloads = []
-    with fitz.open(target) as document:
+    with pymupdf.open(target) as document:
         if document.page_count > MAX_OCR_PAGES:
             raise ValueError(f"PDF exceeds {MAX_OCR_PAGES}-page OCR limit")
         for page in document:
-            png = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).tobytes("png")
+            png = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5)).tobytes("png")
             payloads.append(base64.b64encode(png).decode("utf-8"))
     return payloads
 
@@ -62,6 +66,8 @@ async def extract_text_from_image(filepath: str = "", file_id: str = "") -> str:
     try:
         pages = []
         async with asyncio.timeout(OCR_DEADLINE_SECONDS):
+            if target.suffix.lower() in NATIVE_DOCUMENT_EXTENSIONS:
+                return await asyncio.to_thread(parse_document, str(target))
             if target.suffix.lower() == ".pdf":
                 text = await asyncio.to_thread(parse_pdf, str(target))
                 if len(text.strip()) >= 10:

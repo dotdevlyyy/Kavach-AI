@@ -8,7 +8,7 @@ from app.models.file_upload import FileUpload
 MAX_ATTACHMENT_BYTES = 40 * 1024 * 1024
 MAX_ATTACHMENT_IMAGES = 4
 CHAT_ATTACHMENT_TYPES = {"txt", "md", "csv", "json", "code", "pdf", "docx", "image"}
-AGENT_ATTACHMENT_TYPES = {"pdf", "image"}
+AGENT_ATTACHMENT_TYPES = CHAT_ATTACHMENT_TYPES | {"xlsx"}
 
 
 class UploadLimitError(ValueError):
