@@ -1,4 +1,4 @@
-# Kavach AI — System Architecture & Workflow
+# Kavach AI â€” System Architecture & Workflow
 
 This document provides a comprehensive overview of the Kavach AI system architecture, technology stack, and an end-to-end simulation of the Agentic AI workflow.
 
@@ -10,7 +10,7 @@ Kavach AI operates entirely on-premise with zero outbound network calls, ensurin
 
 ```mermaid
 graph TD
-    subgraph Frontend [Next.js 15 + Bun (localhost:3000)]
+    subgraph Frontend [Next.js 15 Frontend]
         UI[Cult UI Components]
         Chat[Agent Chat Interface]
         Sandbox[Code Sandbox Output]
@@ -21,23 +21,23 @@ graph TD
         UI --> NetMon
     end
 
-    subgraph Backend [FastAPI + UV (localhost:8000)]
+    subgraph Backend [FastAPI Backend]
         Router[Task Auto-Router]
         Agent[ReAct Agent Engine]
-        RAG[RAG / Knowledge Pipeline]
-        Tools[Tool Registry (8 Tools)]
+        RAG[RAG Pipeline]
+        Tools[Tool Registry]
         
         Router --> Agent
         Agent <--> Tools
         Agent <--> RAG
     end
 
-    subgraph Infrastructure [Data & Models]
-        DB[(SQLite + FTS5)]
-        Ollama[Ollama (Local Models)]
+    subgraph Infrastructure [Data and Models]
+        DB[(SQLite Database)]
+        Ollama[Ollama Engine]
     end
 
-    Frontend <==>|HTTP / SSE Streaming| Backend
+    Frontend <==>|HTTP and SSE| Backend
     Backend <==> DB
     Backend <==> Ollama
 ```
@@ -86,7 +86,7 @@ The Agent Engine takes over, executing a multi-step loop.
 
 **[ACT]**
 * Calls Tool: `extract_text_from_image(file_id="pdf_123")`
-* Output: *"Sensor T-101 max threshold is 450°C. Sensor P-202 max pressure is 15 bar."*
+* Output: *"Sensor T-101 max threshold is 450Â°C. Sensor P-202 max pressure is 15 bar."*
 
 **[OBSERVE & REFLECT]**
 ```json
@@ -104,7 +104,7 @@ The Agent Engine takes over, executing a multi-step loop.
 The backend streams the final response back to the Next.js frontend via Server-Sent Events (SSE).
 
 **System Output:** 
-> "I have extracted the thresholds from your diagram (T-101: 450°C, P-202: 15 bar). I have written and verified the Python monitoring script in the sandbox. You can download the script below."
+> "I have extracted the thresholds from your diagram (T-101: 450Â°C, P-202: 15 bar). I have written and verified the Python monitoring script in the sandbox. You can download the script below."
 
 ---
 
