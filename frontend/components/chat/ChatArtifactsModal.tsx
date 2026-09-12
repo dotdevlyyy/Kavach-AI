@@ -130,29 +130,29 @@ export function ChatArtifactsModal({ open, onOpenChange, artifacts }: ChatArtifa
                     Download
                   </a>
                 </div>
-                <div className="flex-1 overflow-auto p-8 bg-muted/30 flex items-center justify-center">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 bg-muted/30 flex flex-col items-center">
                   {selectedArtifact.name.toLowerCase().endsWith('.pdf') || selectedArtifact.type.toLowerCase() === 'pdf' ? (
-                    <div className="w-full h-full max-w-5xl bg-card border border-border shadow-sm rounded-lg overflow-hidden">
+                    <div className="w-full h-full min-h-[500px] max-w-5xl bg-card border border-border shadow-sm rounded-lg overflow-hidden flex flex-col">
                       <iframe 
                         src={`${downloadUrl}#toolbar=0&navpanes=0`} 
-                        className="w-full h-full"
+                        className="w-full flex-1 border-0"
                         title={selectedArtifact.name}
                       />
                     </div>
                   ) : preview?.preview_kind === "image" ? (
-                    <>
+                    <div className="w-full h-full max-w-4xl flex items-center justify-center">
                       {/* Browser-served private uploads cannot use Next image optimization. */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`${apiBase}${preview.image_url}`} alt={selectedArtifact.name} className="max-h-full max-w-full rounded-lg border border-border object-contain" />
-                    </>
+                      <img src={`${apiBase}${preview.image_url}`} alt={selectedArtifact.name} className="max-h-full max-w-full rounded-lg border border-border object-contain shadow-sm" />
+                    </div>
                   ) : preview?.preview_kind === "text" ? (
-                    <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg min-h-[60vh] p-8 font-mono text-sm text-foreground overflow-auto">
+                    <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg p-6 sm:p-8 font-mono text-sm text-foreground my-0">
                       <pre className="whitespace-pre-wrap break-words">{preview.text}</pre>
                       {preview.truncated && <p className="mt-4 text-xs text-muted-foreground">Preview truncated. Download file to view all content.</p>}
                     </div>
                   ) : (
-                    <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg min-h-[60vh] p-8 font-mono text-sm text-foreground overflow-auto">
-                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-4 opacity-70">
+                    <div className="w-full max-w-4xl bg-card border border-border shadow-sm rounded-lg p-8 font-mono text-sm text-foreground my-auto">
+                      <div className="flex flex-col items-center justify-center text-muted-foreground gap-4 opacity-70 py-16">
                         {getIcon(selectedArtifact.type)}
                         <p>{isLoadingPreview ? "Loading preview..." : "Preview not available for this file type."}</p>
                         {!isLoadingPreview && <p className="text-xs">Download file to view it.</p>}

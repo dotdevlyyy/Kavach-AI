@@ -146,7 +146,7 @@ def _media_type(path: Path) -> str:
 
 TEXT_PREVIEW_TYPES = {"txt", "csv", "md", "json"}
 PREVIEWABLE_TYPES = TEXT_PREVIEW_TYPES | {"code", "docx", "xlsx", "pptx"}
-TEXT_PREVIEW_BYTES = 4096
+TEXT_PREVIEW_BYTES = 65536
 
 
 @router.post("/upload", response_model=FileListResponse)

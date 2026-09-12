@@ -148,11 +148,13 @@ export default function ChatPage() {
             }
             if (typeof event.data.file_id === "string") {
               if (!newMsg.deliverables) newMsg.deliverables = [];
+              const rawFilename = typeof event.data.filename === "string" ? event.data.filename.toLowerCase() : "";
               const outputText = String(event.data.tool_output || '').toLowerCase();
               let fileType = 'docx';
-              if (outputText.includes('.pdf')) fileType = 'pdf';
-              else if (outputText.includes('.xlsx')) fileType = 'xlsx';
-              else if (outputText.includes('.pptx')) fileType = 'pptx';
+              if (rawFilename.endsWith('.pdf') || outputText.includes('.pdf')) fileType = 'pdf';
+              else if (rawFilename.endsWith('.xlsx') || outputText.includes('.xlsx')) fileType = 'xlsx';
+              else if (rawFilename.endsWith('.pptx') || outputText.includes('.pptx')) fileType = 'pptx';
+              else if (rawFilename.endsWith('.docx') || outputText.includes('.docx')) fileType = 'docx';
               
               const filename = typeof event.data.filename === "string"
                 ? outputFilename(event.data.filename)
