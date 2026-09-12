@@ -92,6 +92,8 @@ def get_fallback_plan(
         if file_ids
         else []
     )
+    safe_title = re.sub(r"[^A-Za-z0-9 ]+", " ", task_description).strip().title()
+    doc_title = " ".join(safe_title.split()[:6]) or "Generated Document"
     steps = [
         *attachment_steps,
         {
@@ -106,7 +108,7 @@ def get_fallback_plan(
             "title": "Execute & Formulate Response",
             "description": task_description,
             "suggested_tool": doc_tool,
-            "tool_input": {"title": "Generated Document"},
+            "tool_input": {"title": doc_title},
         },
     ]
     return {
